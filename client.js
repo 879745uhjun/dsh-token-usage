@@ -53,6 +53,22 @@ window.__ModuleLoader__.load({
       'page.search': 'Search sessions, workspaces, models',
       'page.range': 'Time range',
       'page.group': 'Group by workspace',
+      'export.label': 'Export',
+      'export.sessions': 'CSV · sessions',
+      'export.sessions.title': 'Download every filtered session as CSV',
+      'export.days': 'CSV · days',
+      'export.days.title': 'Download the daily totals of the selected range as CSV',
+      'export.markdown': 'Copy table',
+      'export.markdown.title': 'Copy the filtered table as a Markdown table',
+      'export.downloaded': 'Exported {name}',
+      'export.copied': 'Table copied to the clipboard',
+      'export.copyFailed': 'Could not write to the clipboard',
+      'csv.workspace': 'Workspace',
+      'csv.turns': 'Turns',
+      'csv.sessionId': 'Session id',
+      'csv.parentSession': 'Parent session',
+      'csv.date': 'Date',
+      'csv.started': 'Started',
       'range.today': 'Today',
       'range.7d': 'Last 7 days',
       'range.30d': 'Last 30 days',
@@ -142,6 +158,22 @@ window.__ModuleLoader__.load({
       'page.search': '搜索会话、工作区、模型',
       'page.range': '时间范围',
       'page.group': '按工作区分组',
+      'export.label': '导出',
+      'export.sessions': 'CSV · 会话',
+      'export.sessions.title': '把当前筛选出的会话导出为 CSV',
+      'export.days': 'CSV · 按天',
+      'export.days.title': '把所选时间范围的每日汇总导出为 CSV',
+      'export.markdown': '复制表格',
+      'export.markdown.title': '把当前筛选出的表格复制为 Markdown',
+      'export.downloaded': '已导出 {name}',
+      'export.copied': '表格已复制到剪贴板',
+      'export.copyFailed': '无法写入剪贴板，请检查权限',
+      'csv.workspace': '工作区',
+      'csv.turns': '轮次',
+      'csv.sessionId': '会话 ID',
+      'csv.parentSession': '父会话 ID',
+      'csv.date': '日期',
+      'csv.started': '开始时间',
       'range.today': '今天',
       'range.7d': '近 7 天',
       'range.30d': '近 30 天',
@@ -275,7 +307,12 @@ window.__ModuleLoader__.load({
 .tu-seg-btn[data-active=true]{background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-weight:600;box-shadow:0 0 0 .5px var(--dsw-alias-border-l2)}
 .tu-seg-btn:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px}
 .tu-section-end{display:none}
-.tu-toolbar{display:flex;align-items:center;gap:8px;justify-content:flex-end;margin:0 0 8px}
+.tu-toolbar{display:flex;align-items:center;gap:8px;justify-content:flex-start;flex-wrap:wrap;margin:0 0 8px}
+.tu-toolbar-export{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.tu-toolbar-label{font-size:11px;color:var(--dsw-alias-label-tertiary);margin-right:2px}
+.tu-toolbar-toggles{display:flex;align-items:center;gap:8px;margin-left:auto}
+.tu-export-note{font-size:11px;line-height:16px;color:var(--dsw-alias-state-success-primary);padding-left:4px}
+.tu-export-note[data-tone=error]{color:var(--dsw-alias-state-error-primary)}
 .tu-bars{display:flex;align-items:flex-end;gap:6px;padding:10px 12px 8px;border:.5px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-lg,12px);background:var(--dsw-alias-bg-layer-1);overflow-x:auto}
 .tu-bar-col{flex:1 1 0;min-width:34px;display:flex;flex-direction:column;align-items:center;gap:4px}
 .tu-bar-value{font-size:10px;line-height:14px;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -366,6 +403,162 @@ window.__ModuleLoader__.load({
       if (number < 1) return `${unit}${number.toFixed(3)}`
       if (number < 10000) return `${unit}${number.toFixed(2)}`
       return `${unit}${Math.round(number).toLocaleString()}`
+    }
+
+    /** Local `YYYY-MM-DD HH:mm` timestamp for exported files. */
+    function formatTimestamp(time) {
+      if (!Number.isFinite(time)) return ''
+      const date = new Date(time)
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      const hour = String(date.getHours()).padStart(2, '0')
+      const minute = String(date.getMinutes()).padStart(2, '0')
+      return `${date.getFullYear()}-${month}-${day} ${hour}:${minute}`
+    }
+
+    /** One CSV field, quoted only when it must be. */
+    function csvField(value) {
+      const text = value === null || value === undefined ? '' : String(value)
+      return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
+    }
+
+    /** A CSV document with a BOM so spreadsheet apps read UTF-8. */
+    function buildCsv(header, rows) {
+      const lines = [header, ...rows].map((row) => row.map(csvField).join(','))
+      return `\ufeff${lines.join('\r\n')}\r\n`
+    }
+
+    /** Trigger a browser download for one generated document. */
+    function downloadText(filename, text, mime) {
+      const blob = new Blob([text], { type: `${mime};charset=utf-8` })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      link.rel = 'noopener'
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+    }
+
+    /** Copy text with the async clipboard API, falling back to execCommand. */
+    async function copyText(text) {
+      try {
+        if (navigator.clipboard !== undefined && typeof navigator.clipboard.writeText === 'function') {
+          await navigator.clipboard.writeText(text)
+          return true
+        }
+      } catch {
+        /* Fall through to the legacy path. */
+      }
+      try {
+        const area = document.createElement('textarea')
+        area.value = text
+        area.setAttribute('readonly', '')
+        area.style.cssText = 'position:fixed;top:-1000px;left:-1000px;opacity:0'
+        document.body.appendChild(area)
+        area.select()
+        const copied = document.execCommand('copy')
+        area.remove()
+        return copied
+      } catch {
+        return false
+      }
+    }
+
+    /** One session per row, with raw numbers a spreadsheet can sum. */
+    function sessionCsv(rows, symbol, t) {
+      const unit = typeof symbol === 'string' && symbol.length > 0 ? symbol : '¥'
+      const header = [
+        t('col.session'),
+        t('csv.workspace'),
+        t('col.model'),
+        t('col.input'),
+        t('col.output'),
+        t('col.cacheRead'),
+        t('col.cacheWrite'),
+        t('col.total'),
+        `${t('col.cost')} (${unit})`,
+        `${t('col.hit')} (%)`,
+        t('csv.turns'),
+        t('col.last'),
+        t('csv.sessionId'),
+        t('csv.parentSession'),
+      ]
+      const lines = rows.map((row) => {
+        const prompt = (Number(row.input) || 0) + (Number(row.cacheRead) || 0) + (Number(row.cacheWrite) || 0)
+        return [
+          row.displayTitle ?? row.title ?? '',
+          row.workspace?.name ?? '',
+          row.model ?? '',
+          Math.round(Number(row.input) || 0),
+          Math.round(Number(row.output) || 0),
+          Math.round(Number(row.cacheRead) || 0),
+          Math.round(Number(row.cacheWrite) || 0),
+          Math.round(Number(row.total) || 0),
+          (Number(row.cost) || 0).toFixed(6),
+          prompt > 0 ? ((Number(row.cacheRead) || 0) / prompt * 100).toFixed(2) : '0',
+          Math.round(Number(row.turns) || 0),
+          formatTimestamp(row.lastActivityAt),
+          row.sessionId ?? '',
+          row.parentSession ?? '',
+        ]
+      })
+      return buildCsv(header, lines)
+    }
+
+    /** One local day per row for the selected range. */
+    function dayCsv(dayRows, symbol, t) {
+      const unit = typeof symbol === 'string' && symbol.length > 0 ? symbol : '¥'
+      const header = [
+        t('csv.date'),
+        t('col.input'),
+        t('col.output'),
+        t('col.cacheRead'),
+        t('col.cacheWrite'),
+        t('col.total'),
+        `${t('col.cost')} (${unit})`,
+      ]
+      const lines = dayRows.map((row) => [
+        row.day ?? '',
+        Math.round(Number(row.input) || 0),
+        Math.round(Number(row.output) || 0),
+        Math.round(Number(row.cacheRead) || 0),
+        Math.round(Number(row.cacheWrite) || 0),
+        Math.round(Number(row.total) || 0),
+        (Number(row.cost) || 0).toFixed(6),
+      ])
+      return buildCsv(header, lines)
+    }
+
+    /** The filtered table as a portable Markdown table. */
+    function markdownTable(rows, symbol, t) {
+      const header = [
+        t('col.session'),
+        t('csv.workspace'),
+        t('col.model'),
+        t('col.total'),
+        t('col.cost'),
+        t('col.hit'),
+        t('col.last'),
+      ]
+      const align = ['---', '---', '---', '---:', '---:', '---:', '---']
+      const cell = (value) => String(value ?? '').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ')
+      const lines = [`| ${header.map(cell).join(' | ')} |`, `| ${align.join(' | ')} |`]
+      for (const row of rows) {
+        const prompt = (Number(row.input) || 0) + (Number(row.cacheRead) || 0) + (Number(row.cacheWrite) || 0)
+        lines.push(`| ${[
+          cell(row.displayTitle ?? row.title ?? ''),
+          cell(row.workspace?.name ?? ''),
+          cell(row.model ?? ''),
+          formatExact(row.total),
+          formatMoney(row.cost, symbol),
+          formatPercent(prompt > 0 ? (Number(row.cacheRead) || 0) / prompt : 0),
+          cell(formatTimestamp(row.lastActivityAt)),
+        ].join(' | ')} |`)
+      }
+      return `${lines.join('\n')}\n`
     }
 
     /** Local calendar day key of one epoch millisecond value. */
@@ -1184,6 +1377,36 @@ window.__ModuleLoader__.load({
         })
       }, [])
 
+      const [notice, setNotice] = useState(null)
+      const noticeTimer = useRef(null)
+      const flash = useCallback((text, tone) => {
+        setNotice({ text, tone: tone ?? 'ok' })
+        if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current)
+        noticeTimer.current = window.setTimeout(() => setNotice(null), 3200)
+      }, [])
+      useEffect(() => () => {
+        if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current)
+      }, [])
+
+      const exportSessions = useCallback(() => {
+        const name = `token-usage-sessions-${shiftDayKey(0)}.csv`
+        downloadText(name, sessionCsv(sorted, data?.pricing?.symbol, t), 'text/csv')
+        flash(t('export.downloaded', { name }))
+      }, [sorted, data, t, flash])
+
+      const exportDays = useCallback(() => {
+        const start = rangeStartKey(range)
+        const list = (Array.isArray(data?.days) ? data.days : []).filter((row) => start === null || row.day >= start)
+        const name = `token-usage-days-${shiftDayKey(0)}.csv`
+        downloadText(name, dayCsv(list, data?.pricing?.symbol, t), 'text/csv')
+        flash(t('export.downloaded', { name }))
+      }, [data, range, t, flash])
+
+      const copyTable = useCallback(async () => {
+        const copied = await copyText(markdownTable(sorted, data?.pricing?.symbol, t))
+        flash(copied ? t('export.copied') : t('export.copyFailed'), copied ? 'ok' : 'error')
+      }, [sorted, data, t, flash])
+
       const updated = fetchedAt > 0 ? relativeTime(fetchedAt, now, t) : ''
 
       return h('div', { className: 'tu' },
@@ -1257,21 +1480,47 @@ window.__ModuleLoader__.load({
                   ? h('div', { className: 'tu-state' }, h('div', { className: 'tu-state-title' }, t('state.empty')))
                   : h(React.Fragment, null,
                     h('div', { className: 'tu-toolbar' },
-                      h('button', {
-                        type: 'button',
-                        className: 'tu-btn',
-                        'data-active': grouped ? 'true' : undefined,
-                        'aria-pressed': grouped,
-                        title: t('page.group'),
-                        onClick: () => setGrouped((value) => !value),
-                      }, t('page.group')),
-                      h('button', {
-                        type: 'button',
-                        className: 'tu-btn',
-                        'aria-pressed': showZero,
-                        title: showZero ? t('page.hideZero') : t('page.showZero'),
-                        onClick: () => setShowZero((value) => !value),
-                      }, showZero ? t('page.hideZero') : t('page.showZero'))),
+                      h('div', { className: 'tu-toolbar-export' },
+                        h('span', { className: 'tu-toolbar-label' }, t('export.label')),
+                        h('button', {
+                          type: 'button',
+                          className: 'tu-btn',
+                          title: t('export.sessions.title'),
+                          onClick: exportSessions,
+                        }, t('export.sessions')),
+                        h('button', {
+                          type: 'button',
+                          className: 'tu-btn',
+                          title: t('export.days.title'),
+                          onClick: exportDays,
+                        }, t('export.days')),
+                        h('button', {
+                          type: 'button',
+                          className: 'tu-btn',
+                          title: t('export.markdown.title'),
+                          onClick: () => {
+                            void copyTable()
+                          },
+                        }, t('export.markdown'))),
+                      notice === null
+                        ? null
+                        : h('span', { className: 'tu-export-note', role: 'status', 'data-tone': notice.tone }, notice.text),
+                      h('div', { className: 'tu-toolbar-toggles' },
+                        h('button', {
+                          type: 'button',
+                          className: 'tu-btn',
+                          'data-active': grouped ? 'true' : undefined,
+                          'aria-pressed': grouped,
+                          title: t('page.group'),
+                          onClick: () => setGrouped((value) => !value),
+                        }, t('page.group')),
+                        h('button', {
+                          type: 'button',
+                          className: 'tu-btn',
+                          'aria-pressed': showZero,
+                          title: showZero ? t('page.hideZero') : t('page.showZero'),
+                          onClick: () => setShowZero((value) => !value),
+                        }, showZero ? t('page.hideZero') : t('page.showZero')))),
                     h(SessionTable, {
                       rows,
                       hiddenCount,

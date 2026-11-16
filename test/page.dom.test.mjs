@@ -23,6 +23,28 @@ Object.defineProperty(globalThis, 'navigator', { value: dom.window.navigator, co
 const React = (await import('react')).default
 const { createRoot } = await import('react-dom/client')
 
+// Browsers only: jsdom has neither object URLs nor a clipboard, so the export
+// helpers get observable stand-ins.
+const downloads = []
+const clicks = []
+const copied = []
+window.URL.createObjectURL = (blob) => {
+  downloads.push(blob)
+  return 'blob:mock'
+}
+window.URL.revokeObjectURL = () => {}
+window.HTMLAnchorElement.prototype.click = function click() {
+  clicks.push({ name: this.download, href: this.href })
+}
+Object.defineProperty(window.navigator, 'clipboard', {
+  configurable: true,
+  value: {
+    writeText: async (text) => {
+      copied.push(text)
+    },
+  },
+})
+
 /** Wait until `probe` returns a truthy value or the deadline passes. */
 async function waitFor(probe, label, timeoutMs = 5000) {
   const deadline = Date.now() + timeoutMs
@@ -88,7 +110,7 @@ function payload() {
     }
   }
   const sessions = [
-    session('session-a', 'Alpha 会话', 'workplace', [day(0, 100, 50, 150, 0.5)]),
+    session('session-a', 'Alpha, "quoted" | 会话', 'workplace', [day(0, 100, 50, 150, 0.5)]),
     session('session-b', 'Beta 会话', 'workplace', [day(0, 150, 75, 175, 0.75), day(10, 50, 25, 25, 0.5)], { live: true }),
     session('session-c', 'Gamma 会话', 'docs', [day(0, 10, 5, 85, 0.15)]),
     session('session-d', 'Zero 会话', 'docs', []),
@@ -275,7 +297,7 @@ await waitFor(() => page.rows().length === 3, 'child row collapsed')
 check('chip collapses the sub-session', page.rows().length === 3)
 
 // Flat list: grouping off, sub-session folding still applies.
-const groupedToggle = build.container.querySelector('.tu-toolbar .tu-btn')
+const groupedToggle = build.container.querySelector('.tu-toolbar-toggles .tu-btn')
 groupedToggle.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
 await waitFor(() => page.groups().length === 0, 'grouping off')
 check('grouping toggle flattens the list', page.groups().length === 0 && page.rows().length === 3)
@@ -343,8 +365,44 @@ setValue(window, rangeSelect, 'all', 'change')
 await waitFor(() => build.container.querySelector('.tu-card-value')?.textContent === '¥2.20', 'all-time window')
 check('range returns to all time', build.container.querySelector('.tu-card-value')?.textContent === '¥2.20')
 
+// Exports: session CSV, daily CSV, and the Markdown copy.
+const exportButtons = Array.from(build.container.querySelectorAll('.tu-toolbar-export .tu-btn'))
+check('export buttons render', exportButtons.length === 3)
+const clickButton = (button) => button.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+
+clickButton(exportButtons[0])
+await waitFor(() => clicks.length === 1, 'session csv download')
+const sessionCsvText = await downloads.at(-1).text()
+const sessionBytes = new Uint8Array(await downloads.at(-1).arrayBuffer())
+const sessionLines = sessionCsvText.split('\r\n').filter(Boolean)
+check('session csv has a header and four rows', sessionLines.length === 5, String(sessionLines.length))
+check('session csv starts with a UTF-8 BOM', sessionBytes[0] === 0xef && sessionBytes[1] === 0xbb && sessionBytes[2] === 0xbf, `${sessionBytes[0]},${sessionBytes[1]},${sessionBytes[2]}`)
+check('session csv quotes commas and quotes', sessionCsvText.includes('"Alpha, ""quoted"" | 会话"'))
+check('session csv names the money column', sessionLines[0].includes('花费 (¥)'), sessionLines[0])
+check('session csv carries raw token counts', sessionCsvText.includes(',100,50,150,0,300,'), sessionLines[1])
+
+clickButton(exportButtons[1])
+await waitFor(() => clicks.length === 2, 'days csv download')
+const daysAll = (await downloads.at(-1).text()).split('\r\n').filter(Boolean)
+check('days csv covers every recorded day', daysAll.length === 3, String(daysAll.length))
+
+setValue(window, rangeSelect, '7d', 'change')
+await waitFor(() => build.container.querySelector('.tu-card-value')?.textContent === '¥1.70', 'range 7d for export')
+clickButton(exportButtons[1])
+await waitFor(() => clicks.length === 3, 'days csv for 7d')
+const days7 = (await downloads.at(-1).text()).split('\r\n').filter(Boolean)
+check('days csv follows the range', days7.length === 2, String(days7.length))
+setValue(window, rangeSelect, 'all', 'change')
+await waitFor(() => build.container.querySelector('.tu-card-value')?.textContent === '¥2.20', 'range back to all')
+
+clickButton(exportButtons[2])
+await waitFor(() => copied.length === 1, 'markdown clipboard')
+check('markdown table starts with the header', copied[0].startsWith('| 会话 |'), copied[0].slice(0, 40))
+check('markdown table escapes pipes', copied[0].includes('\\|'), copied[0].split('\n')[2])
+check('markdown table has one row per session', copied[0].trim().split('\n').length === 6, String(copied[0].trim().split('\n').length))
+
 // Zero-usage toggle.
-const zeroToggle = build.container.querySelectorAll('.tu-toolbar .tu-btn')[1]
+const zeroToggle = build.container.querySelectorAll('.tu-toolbar-toggles .tu-btn')[1]
 zeroToggle.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
 await waitFor(() => page.rows().length === 4, 'zero row shown')
 check('zero-usage toggle shows the empty session', page.rows().length === 4)

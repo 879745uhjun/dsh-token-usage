@@ -31,6 +31,9 @@ dedicated page.
   `→0pp`). Hovering shows both values: a selected window compares with the
   window before it, **all time** compares the latest 7 days with the 7 before,
   and the two “today” cards compare with yesterday.
+- **Exports.** Three buttons above the table: **CSV · sessions** (the filtered, sorted
+  table with raw integers and a UTF-8 BOM), **CSV · days** (daily totals for the
+  selected range), and **Copy table** (a Markdown table ready to paste).
 - **Workspace grouping and sub-sessions.** Rows group under their workspace with
   a subtotal; a subagent session folds into its parent as a chip
   (`1 sub-sessions · ¥1.22`) that expands inline. Grouping can be turned off.
