@@ -57,7 +57,7 @@ const SESSION_FILES = ['session.v4.jsonl.zstd', 'session.jsonl.zstd', 'session.v
 const CACHE_FILE = 'token-usage-cache.json'
 
 /** Cache file format version. */
-const CACHE_VERSION = 1
+const CACHE_VERSION = 2
 
 /** Coalesce cache writes; a two-second poll must not rewrite the file. */
 const CACHE_WRITE_DELAY_MS = 8000
@@ -189,6 +189,23 @@ export function isPeakTime(time, pricing = DEFAULT_PRICING) {
 }
 
 /**
+ * The next instant the peak/off-peak classification flips.
+ * Boundaries fall on Beijing whole hours, so an hourly scan suffices.
+ */
+export function nextSwitchAt(time, pricing = DEFAULT_PRICING) {
+  if (!Number.isFinite(time)) return null
+  const current = isPeakTime(time, pricing)
+  const hour = 3_600_000
+  const offset = 8 * hour
+  let probe = Math.floor((time + offset) / hour) * hour - offset
+  for (let step = 0; step < 24 * 10; step += 1) {
+    probe += hour
+    if (isPeakTime(probe, pricing) !== current) return probe
+  }
+  return null
+}
+
+/**
  * Estimated price of one usage sample, in the table's currency.
  * Prompt tokens billed as cache misses (writes included) use the miss rate; the
  * peak window multiplies every rate.
@@ -229,7 +246,7 @@ function dayKeyOf(time) {
 
 /** All-zero usage buckets. */
 function zeroBuckets() {
-  return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 }
+  return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, costPeak: 0, costValley: 0 }
 }
 
 /** Add one usage sample into a bucket set in place. */
@@ -463,7 +480,10 @@ export function foldEvent(state, event, pricing = DEFAULT_PRICING) {
       const at = time ?? state.createdAt ?? Date.now()
       const key = dayKeyOf(at)
       const price = priceFor(state.model, pricing)
-      const cost = costOf(sample, price, isPeakTime(at, pricing), pricing)
+      const peak = isPeakTime(at, pricing)
+      const cost = costOf(sample, price, peak, pricing)
+      const costPeak = peak ? cost : 0
+      const costValley = peak ? 0 : cost
       const previous = state.last !== null && state.last.turn === turn && state.last.step === step ? state.last : null
       if (previous !== null
         && bucketsEqual(previous.buckets, sample)
@@ -472,18 +492,26 @@ export function foldEvent(state, event, pricing = DEFAULT_PRICING) {
       if (previous !== null) {
         addBuckets(state.totals, previous.buckets, -1)
         state.totals.cost -= previous.cost ?? 0
+        state.totals.costPeak -= previous.costPeak ?? 0
+        state.totals.costValley -= previous.costValley ?? 0
         const bucket = state.days.get(previous.day)
         if (bucket !== undefined) {
           addBuckets(bucket, previous.buckets, -1)
           bucket.cost -= previous.cost ?? 0
+          bucket.costPeak -= previous.costPeak ?? 0
+          bucket.costValley -= previous.costValley ?? 0
         }
       }
       addBuckets(state.totals, sample, 1)
       state.totals.cost += cost
+      state.totals.costPeak += costPeak
+      state.totals.costValley += costValley
       const dayBucket = touchDay(state, key)
       addBuckets(dayBucket, sample, 1)
       dayBucket.cost += cost
-      state.last = { turn, step, buckets: sample, day: key, cost }
+      dayBucket.costPeak += costPeak
+      dayBucket.costValley += costValley
+      state.last = { turn, step, buckets: sample, day: key, cost, costPeak, costValley }
       return
     }
     default:
@@ -732,6 +760,8 @@ function summarize(reader, now) {
       cacheWrite: buckets.cacheWrite,
       total: dayTotal,
       cost: roundCost(buckets.cost),
+      costPeak: roundCost(buckets.costPeak),
+      costValley: roundCost(buckets.costValley),
     })
   }
   days.sort((left, right) => left.day.localeCompare(right.day))
@@ -759,6 +789,8 @@ function summarize(reader, now) {
     total,
     prompt,
     cost: roundCost(totals.cost),
+    costPeak: roundCost(totals.costPeak),
+    costValley: roundCost(totals.costValley),
     cacheHitRate: prompt > 0 ? totals.cacheRead / prompt : 0,
     error: reader.error,
     days,
@@ -818,6 +850,8 @@ export function restoreSessionState(raw) {
     cacheRead: count(raw.totals.cacheRead),
     cacheWrite: count(raw.totals.cacheWrite),
     cost: count(raw.totals.cost),
+    costPeak: count(raw.totals.costPeak),
+    costValley: count(raw.totals.costValley),
   }
   if (raw.days !== null && typeof raw.days === 'object') {
     for (const [day, buckets] of Object.entries(raw.days)) {
@@ -828,6 +862,8 @@ export function restoreSessionState(raw) {
         cacheRead: count(buckets.cacheRead),
         cacheWrite: count(buckets.cacheWrite),
         cost: count(buckets.cost),
+        costPeak: count(buckets.costPeak),
+        costValley: count(buckets.costValley),
       })
     }
   }
@@ -843,6 +879,8 @@ export function restoreSessionState(raw) {
       },
       day: text(raw.last.day),
       cost: count(raw.last.cost),
+      costPeak: count(raw.last.costPeak),
+      costValley: count(raw.last.costValley),
     }
   }
   state.turns = count(raw.turns)
@@ -1045,10 +1083,14 @@ export function createScanner(sessionsRoot, pricing = DEFAULT_PRICING, options =
       for (const session of sessions) {
         addBuckets(totals, session, 1)
         totals.cost += session.cost
+        totals.costPeak += session.costPeak
+        totals.costValley += session.costValley
         for (const day of session.days) {
           const bucket = days.get(day.day) ?? zeroBuckets()
           addBuckets(bucket, day, 1)
           bucket.cost += day.cost
+          bucket.costPeak += day.costPeak
+          bucket.costValley += day.costValley
           days.set(day.day, bucket)
         }
       }
@@ -1062,6 +1104,8 @@ export function createScanner(sessionsRoot, pricing = DEFAULT_PRICING, options =
           cacheWrite: buckets.cacheWrite,
           total: totalOf(buckets),
           cost: roundCost(buckets.cost),
+          costPeak: roundCost(buckets.costPeak),
+          costValley: roundCost(buckets.costValley),
         })
       }
       dayRows.sort((left, right) => left.day.localeCompare(right.day))
@@ -1080,6 +1124,8 @@ export function createScanner(sessionsRoot, pricing = DEFAULT_PRICING, options =
           cacheWrite: totals.cacheWrite,
           total: totalOf(totals),
           cost: roundCost(totals.cost),
+          costPeak: roundCost(totals.costPeak),
+          costValley: roundCost(totals.costValley),
           sessions: sessions.length,
           today: todayRow?.total ?? 0,
           todayCost: todayRow?.cost ?? 0,
@@ -1088,6 +1134,8 @@ export function createScanner(sessionsRoot, pricing = DEFAULT_PRICING, options =
           currency: pricing.currency,
           symbol: pricing.symbol,
           peakMultiplier: pricing.peakMultiplier,
+          peakNow: isPeakTime(now, pricing),
+          nextSwitchAt: nextSwitchAt(now, pricing),
           source: pricing.source,
         },
         days: dayRows,

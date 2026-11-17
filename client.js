@@ -113,6 +113,22 @@ window.__ModuleLoader__.load({
       'history.metric.title': 'Switch what the history bars measure',
       'history.window': 'History window',
       'history.days': '{days} days',
+      'history.chart.bars': 'Bars',
+      'history.chart.line': 'Line',
+      'history.chart.pie': 'Pie',
+      'history.chart.title': 'Switch the history chart form',
+      'history.other': 'Others',
+      'history.peak': 'peak {value}',
+      'pricing.peak.left': 'Peak · {time} left',
+      'pricing.valley.left': 'Off-peak · {time} left',
+      'history.valleyTime': 'Off-peak',
+      'history.peakTime': 'Peak',
+      'history.split.valley': 'Off-peak {value}',
+      'history.split.peak': 'Peak {value}',
+      'pricing.now.peak': 'Peak now',
+      'pricing.now.valley': 'Off-peak now',
+      'pricing.now.peak.title': 'Beijing weekdays 09:00–12:00 and 14:00–18:00, excluding holidays; every rate is doubled',
+      'pricing.now.valley.title': 'Everything else, including weekends and statutory holidays',
       'col.session': 'Session',
       'col.model': 'Model',
       'col.input': 'Input',
@@ -220,6 +236,22 @@ window.__ModuleLoader__.load({
       'history.metric.title': '切换历史条的统计口径',
       'history.window': '历史天数',
       'history.days': '{days} 天',
+      'history.chart.bars': '柱状',
+      'history.chart.line': '折线',
+      'history.chart.pie': '扇形',
+      'history.chart.title': '切换历史图的类型',
+      'history.other': '其他',
+      'history.peak': '峰值 {value}',
+      'pricing.peak.left': '峰时 · 剩余 {time}',
+      'pricing.valley.left': '谷时 · 剩余 {time}',
+      'history.valleyTime': '谷时',
+      'history.peakTime': '峰时',
+      'history.split.valley': '谷时 {value}',
+      'history.split.peak': '峰时 {value}',
+      'pricing.now.peak': '当前峰时',
+      'pricing.now.valley': '当前谷时',
+      'pricing.now.peak.title': '北京时间工作日 9:00–12:00、14:00–18:00（法定节假日除外），单价 ×2',
+      'pricing.now.valley.title': '其余时段（含周末与法定节假日）按谷时计价',
       'col.session': '会话',
       'col.model': '模型',
       'col.input': '输入',
@@ -321,7 +353,33 @@ window.__ModuleLoader__.load({
 .tu-toolbar-toggles{display:flex;align-items:center;gap:8px;margin-left:auto}
 .tu-export-note{font-size:11px;line-height:16px;color:var(--dsw-alias-state-success-primary);padding-left:4px}
 .tu-export-note[data-tone=error]{color:var(--dsw-alias-state-error-primary)}
-.tu-bars{display:flex;align-items:flex-end;gap:6px;padding:10px 12px 8px;border:.5px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-lg,12px);background:var(--dsw-alias-bg-layer-1);overflow-x:auto}
+.tu-chart{position:relative;box-sizing:border-box;height:232px;padding:12px 14px 10px;border:.5px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-lg,12px);background:var(--dsw-alias-bg-layer-1);overflow:hidden;display:flex;flex-direction:column;justify-content:center;gap:8px}
+.tu-bars{flex:1;min-height:0;display:flex;align-items:flex-end;gap:6px}
+.tu-bar-col{height:100%}
+.tu-bar-track{flex:1;min-height:0;height:auto}
+.tu-chart-legend{display:flex;align-items:center;justify-content:flex-end;gap:14px;margin:0 0 8px;font-size:11px}
+.tu-chart-legend .tu-legend-item{display:inline-flex;align-items:center;gap:6px;color:var(--dsw-alias-label-secondary)}
+.tu-chart-legend .tu-legend-value{font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-primary)}
+.tu-bar-track[data-split=true]{flex-direction:column-reverse;align-items:stretch}
+.tu-bar-seg{display:block;width:100%}
+.tu-bar-seg[data-kind=valley]{background:#4C8DFF}
+.tu-bar-seg[data-kind=peak]{background:#D29922}
+.tu-now-badge{display:inline-flex;align-items:center;height:18px;padding:0 7px;border-radius:999px;font-size:10px;line-height:16px;color:var(--dsw-alias-state-success-primary);background:color-mix(in srgb, var(--dsw-alias-state-success-primary) 14%, transparent)}
+.tu-now-badge[data-peak=true]{color:var(--dsw-alias-state-warn-primary);background:color-mix(in srgb, var(--dsw-alias-state-warn-primary) 16%, transparent)}
+.tu-line svg{display:block;width:100%;height:auto;flex:1;min-height:0}
+.tu-line-max{position:absolute;top:10px;right:16px;font-size:10px;color:var(--dsw-alias-label-tertiary)}
+.tu-line-days{display:flex;justify-content:space-between;gap:4px;margin-top:6px;overflow:hidden}
+.tu-line-days .tu-bar-day{flex:1 1 0;text-align:center;min-width:0}
+.tu-pie{display:flex;flex-direction:row;align-items:center;justify-content:center;gap:20px;flex-wrap:wrap;height:100%}
+.tu-pie svg{width:168px;height:168px;flex:none}
+.tu-pie-total{font-size:9px;font-weight:600;fill:var(--dsw-alias-label-primary)}
+.tu-pie-caption{font-size:6px;fill:var(--dsw-alias-label-tertiary)}
+.tu-legend{display:flex;flex-direction:column;gap:6px;min-width:220px}
+.tu-legend-item{display:grid;grid-template-columns:10px 1fr auto auto;align-items:center;gap:8px;font-size:11px;color:var(--dsw-alias-label-secondary)}
+.tu-legend-dot{width:8px;height:8px;border-radius:2px}
+.tu-legend-label{color:var(--dsw-alias-label-secondary)}
+.tu-legend-value{font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-primary)}
+.tu-legend-pct{font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-tertiary);min-width:34px;text-align:right}
 .tu-bar-col{flex:1 1 0;min-width:34px;display:flex;flex-direction:column;align-items:center;gap:4px}
 .tu-bar-value{font-size:10px;line-height:14px;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums;white-space:nowrap}
 .tu-bar-track{width:100%;max-width:38px;height:56px;border-radius:4px;background:var(--dsw-alias-bg-layer-2);display:flex;align-items:flex-end;overflow:hidden}
@@ -422,6 +480,15 @@ window.__ModuleLoader__.load({
       const hour = String(date.getHours()).padStart(2, '0')
       const minute = String(date.getMinutes()).padStart(2, '0')
       return `${date.getFullYear()}-${month}-${day} ${hour}:${minute}`
+    }
+
+    /** Compact countdown until the next pricing window: `2h 05m` or `12m`. */
+    function formatRemaining(ms) {
+      if (!Number.isFinite(ms) || ms <= 0) return '—'
+      const minutes = Math.max(1, Math.round(ms / 60000))
+      const hours = Math.floor(minutes / 60)
+      const rest = minutes % 60
+      return hours > 0 ? `${hours}h ${String(rest).padStart(2, '0')}m` : `${rest}m`
     }
 
     /** One CSV field, quoted only when it must be. */
@@ -995,8 +1062,204 @@ window.__ModuleLoader__.load({
     }
 
     /** Fourteen local days of total usage. */
+    /** Selectable history chart forms, remembered per browser. */
+    const CHART_TYPES = ['bars', 'line', 'pie']
+    const CHART_STORAGE_KEY = 'token-usage.chart'
+    /** Off-peak and peak colors shared by every split chart. */
+    const PEAK_COLORS = { valley: '#4C8DFF', peak: '#D29922' }
+
+    /** The remembered chart form, or bars when nothing valid is stored. */
+    function readChartType() {
+      try {
+        const stored = window.localStorage.getItem(CHART_STORAGE_KEY)
+        return CHART_TYPES.includes(stored) ? stored : 'bars'
+      } catch {
+        return 'bars'
+      }
+    }
+
+    /** Persist the chosen chart form; locked storage just forgets it. */
+    function storeChartType(chart) {
+      try {
+        window.localStorage.setItem(CHART_STORAGE_KEY, chart)
+      } catch {
+        /* Private mode and locked storage are not errors here. */
+      }
+    }
+
+    /** One value label for the active metric. */
+    function historyValue(row, field, metric, symbol) {
+      return metric === 'cost' ? formatMoney(row.cost, symbol) : formatTokens(row.total)
+    }
+
+    /** Peak/off-peak totals for the window, shown above split charts. */
+    function HistoryLegend({ rows, symbol, t }) {
+      const valley = rows.reduce((sum, row) => sum + (Number(row.costValley) || 0), 0)
+      const peak = rows.reduce((sum, row) => sum + (Number(row.costPeak) || 0), 0)
+      return h('div', { className: 'tu-chart-legend' },
+        h('span', { className: 'tu-legend-item' },
+          h('i', { className: 'tu-legend-dot', style: { background: PEAK_COLORS.valley } }),
+          h('span', { className: 'tu-legend-label' }, t('history.valleyTime')),
+          h('span', { className: 'tu-legend-value' }, formatMoney(valley, symbol))),
+        h('span', { className: 'tu-legend-item' },
+          h('i', { className: 'tu-legend-dot', style: { background: PEAK_COLORS.peak } }),
+          h('span', { className: 'tu-legend-label' }, t('history.peakTime')),
+          h('span', { className: 'tu-legend-value' }, formatMoney(peak, symbol))))
+    }
+
+    /** Bars: one tone for tokens, off-peak + peak stacked for spend. */
+    function HistoryBars({ rows, field, metric, symbol, todayKey, t }) {
+      const max = rows.reduce((peak, row) => Math.max(peak, row[field]), 0)
+      const split = metric === 'cost'
+      return h('div', { className: 'tu-chart' },
+        split ? h(HistoryLegend, { rows, symbol, t }) : null,
+        h('div', { className: 'tu-bars' }, rows.map((row) => {
+          const ratio = max > 0 ? row[field] / max : 0
+          const peakShare = row.cost > 0 ? row.costPeak / row.cost : 0
+          const peakPct = ratio * peakShare * 100
+          const valleyPct = ratio * (1 - peakShare) * 100
+          const title = `${row.key}\n${formatExact(row.total)} tokens\n${t('summary.input')} ${formatExact(row.input)} · ${t('summary.output')} ${formatExact(row.output)}\n${t('summary.cacheRead')} ${formatExact(row.cacheRead)} · ${t('col.cacheWrite')} ${formatExact(row.cacheWrite)}\n${t('col.cost')} ${formatMoney(row.cost, symbol)} · ${t('history.split.valley', { value: formatMoney(row.costValley, symbol) })} · ${t('history.split.peak', { value: formatMoney(row.costPeak, symbol) })}`
+          return h('div', {
+            key: row.key,
+            className: 'tu-bar-col',
+            'data-today': row.key === todayKey ? 'true' : undefined,
+            title,
+          },
+          h('span', { className: 'tu-bar-value' }, historyValue(row, field, metric, symbol)),
+          h('span', { className: 'tu-bar-track', 'data-split': split ? 'true' : undefined },
+            split
+              ? h(React.Fragment, null,
+                h('i', { className: 'tu-bar-seg', 'data-kind': 'valley', style: { height: `${Math.max(0, valleyPct)}%` } }),
+                h('i', { className: 'tu-bar-seg', 'data-kind': 'peak', style: { height: `${Math.max(0, peakPct)}%` } }))
+              : h('i', {
+                className: 'tu-bar-fill',
+                style: { height: row[field] > 0 ? `${Math.max(4, Math.round(ratio * 100))}%` : '2px' },
+              })),
+          h('span', { className: 'tu-bar-day' }, formatDayLabel(row.date)))
+        })))
+    }
+
+    /** Line + area over the same daily values; spend adds a peak series. */
+    function HistoryLine({ rows, field, metric, symbol, todayKey, t }) {
+      const split = metric === 'cost'
+      const max = rows.reduce((peak, row) => Math.max(peak, row[field]), 0)
+      const count = rows.length
+      const x = (index) => (count <= 1 ? 50 : (index / (count - 1)) * 100)
+      const y = (value) => (max > 0 ? 96 - (value / max) * 84 : 96)
+      const valleyPoints = rows.map((row, index) => `${x(index).toFixed(2)},${y(split ? row.costValley : row[field]).toFixed(2)}`)
+      const peakPoints = split ? rows.map((row, index) => `${x(index).toFixed(2)},${y(row.costPeak).toFixed(2)}`) : null
+      const line = valleyPoints.join(' ')
+      const area = `0,100 ${line} 100,100`
+      return h('div', { className: 'tu-chart tu-line' },
+        split ? h(HistoryLegend, { rows, symbol, t }) : null,
+        h('div', { className: 'tu-line-max' }, t('history.peak', {
+          value: metric === 'cost' ? formatMoney(max, symbol) : formatTokens(max),
+        })),
+        h('svg', { viewBox: '0 0 100 100', preserveAspectRatio: 'none', role: 'img', 'aria-label': t('history.chart.line') },
+          h('defs', null,
+            h('linearGradient', { id: 'tu-line-fill', x1: '0', y1: '0', x2: '0', y2: '1' },
+              h('stop', { offset: '0%', stopColor: PEAK_COLORS.valley, stopOpacity: '0.30' }),
+              h('stop', { offset: '100%', stopColor: PEAK_COLORS.valley, stopOpacity: '0' }))),
+          h('polygon', { points: area, fill: 'url(#tu-line-fill)' }),
+          h('polyline', {
+            points: line,
+            fill: 'none',
+            stroke: split ? PEAK_COLORS.valley : 'var(--dsw-alias-state-business-primary)',
+            strokeWidth: 2,
+            vectorEffect: 'non-scaling-stroke',
+            strokeLinejoin: 'round',
+            strokeLinecap: 'round',
+          }),
+          peakPoints === null
+            ? null
+            : h('polyline', {
+              points: peakPoints.join(' '),
+              fill: 'none',
+              stroke: PEAK_COLORS.peak,
+              strokeWidth: 2,
+              strokeDasharray: '4 3',
+              vectorEffect: 'non-scaling-stroke',
+              strokeLinejoin: 'round',
+              strokeLinecap: 'round',
+            }),
+          rows.map((row, index) => h('g', { key: row.key },
+            h('circle', {
+              cx: x(index),
+              cy: y(split ? row.costValley : row[field]),
+              r: 1.3,
+              fill: split ? PEAK_COLORS.valley : 'var(--dsw-alias-state-business-primary)',
+            }),
+            split
+              ? h('circle', { cx: x(index), cy: y(row.costPeak), r: 1.1, fill: PEAK_COLORS.peak })
+              : null,
+            h('title', null, split
+              ? `${row.key} · ${t('history.split.valley', { value: formatMoney(row.costValley, symbol) })} · ${t('history.split.peak', { value: formatMoney(row.costPeak, symbol) })}`
+              : `${row.key} · ${historyValue(row, field, metric, symbol)}`)))),
+        h('div', { className: 'tu-line-days' }, rows.map((row) => h('span', {
+          key: row.key,
+          className: 'tu-bar-day',
+          'data-today': row.key === todayKey ? 'true' : undefined,
+        }, formatDayLabel(row.date)))))
+    }
+
+    /** Donut over the same window: top days plus the remainder. */
+    function HistoryPie({ rows, field, metric, symbol, t }) {
+      const split = metric === 'cost'
+      const colors = split
+        ? [PEAK_COLORS.valley, PEAK_COLORS.peak]
+        : ['#4C8DFF', '#3FB950', '#D29922', '#F85149', '#A371F7', '#39C5CF', '#DB61A2', '#8B949E']
+      let slices
+      if (split) {
+        const valley = rows.reduce((sum, row) => sum + (Number(row.costValley) || 0), 0)
+        const peak = rows.reduce((sum, row) => sum + (Number(row.costPeak) || 0), 0)
+        slices = [
+          { key: 'valley', label: t('history.valleyTime'), value: valley },
+          { key: 'peak', label: t('history.peakTime'), value: peak },
+        ].filter((slice) => slice.value > 0)
+      } else {
+        const entries = rows.filter((row) => row[field] > 0).sort((left, right) => right[field] - left[field])
+        slices = entries.slice(0, 6).map((row) => ({ key: row.key, label: formatDayLabel(row.date), value: row[field] }))
+        const restValue = entries.slice(6).reduce((sum, row) => sum + row[field], 0)
+        if (restValue > 0) slices.push({ key: '__rest__', label: t('history.other'), value: restValue })
+      }
+      const total = slices.reduce((sum, slice) => sum + slice.value, 0)
+      const circumference = 2 * Math.PI * 40
+      let offset = 0
+      const format = (value) => (metric === 'cost' ? formatMoney(value, symbol) : formatTokens(value))
+      return h('div', { className: 'tu-chart tu-pie' },
+        h('svg', { viewBox: '0 0 100 100', role: 'img', 'aria-label': t('history.chart.pie') },
+          h('circle', { cx: 50, cy: 50, r: 40, fill: 'none', stroke: 'var(--dsw-alias-bg-layer-2)', strokeWidth: 18 }),
+          slices.map((slice, index) => {
+            const length = total > 0 ? (slice.value / total) * circumference : 0
+            const share = total > 0 ? Math.round((slice.value / total) * 100) : 0
+            const arc = h('circle', {
+              key: slice.key,
+              cx: 50,
+              cy: 50,
+              r: 40,
+              fill: 'none',
+              stroke: colors[index % colors.length],
+              strokeWidth: 18,
+              strokeDasharray: `${length.toFixed(2)} ${(circumference - length).toFixed(2)}`,
+              strokeDashoffset: (-offset).toFixed(2),
+              transform: 'rotate(-90 50 50)',
+            }, h('title', null, `${slice.label} · ${format(slice.value)} · ${share}%`))
+            offset += length
+            return arc
+          }),
+          h('text', { x: 50, y: 48, textAnchor: 'middle', className: 'tu-pie-total' }, format(total)),
+          h('text', { x: 50, y: 60, textAnchor: 'middle', className: 'tu-pie-caption' },
+            t(metric === 'cost' ? 'history.metric.cost' : 'history.metric.tokens'))),
+        h('div', { className: 'tu-legend' }, slices.map((slice, index) => h('span', { key: slice.key, className: 'tu-legend-item' },
+          h('i', { className: 'tu-legend-dot', style: { background: colors[index % colors.length] } }),
+          h('span', { className: 'tu-legend-label' }, slice.label),
+          h('span', { className: 'tu-legend-value' }, format(slice.value)),
+          h('span', { className: 'tu-legend-pct' }, `${total > 0 ? Math.round((slice.value / total) * 100) : 0}%`)))))
+    }
+
     function HistoryStrip({ data, t, now, windowDays, onDaysChange }) {
       const [metric, setMetric] = useState('cost')
+      const [chart, setChart] = useState(readChartType)
       const symbol = data?.pricing?.symbol
       const byDay = useMemo(() => {
         const map = new Map()
@@ -1017,12 +1280,24 @@ window.__ModuleLoader__.load({
           cacheRead: Number(bucket?.cacheRead) || 0,
           cacheWrite: Number(bucket?.cacheWrite) || 0,
           cost: Number(bucket?.cost) || 0,
+          costPeak: Number(bucket?.costPeak) || 0,
+          costValley: Number(bucket?.costValley) || 0,
         }
       })
       const field = metric === 'cost' ? 'cost' : 'total'
-      const max = rows.reduce((peak, row) => Math.max(peak, row[field]), 0)
       const todayKey = dayKeyOf(Date.now())
       const hasAny = rows.some((row) => row[field] > 0)
+      const chooseChart = (next) => {
+        setChart(next)
+        storeChartType(next)
+      }
+      const chartBody = !hasAny
+        ? h('div', { className: 'tu-state' }, h('div', { className: 'tu-state-detail' }, t('history.empty')))
+        : chart === 'line'
+          ? h(HistoryLine, { rows, field, metric, symbol, todayKey, t })
+          : chart === 'pie'
+            ? h(HistoryPie, { rows, field, metric, symbol, t })
+            : h(HistoryBars, { rows, field, metric, symbol, todayKey, t })
       return h('section', { className: 'tu-section' },
         h('div', { className: 'tu-section-head' },
           h('h2', { className: 'tu-section-title' }, t('history.title')),
@@ -1035,6 +1310,15 @@ window.__ModuleLoader__.load({
               title: t('history.window'),
               onChange: (event) => onDaysChange(Number(event.target.value)),
             }, HISTORY_WINDOWS.map((count) => h('option', { key: count, value: String(count) }, t('history.days', { days: count })))),
+            h('div', { className: 'tu-seg', title: t('history.chart.title'), role: 'group' },
+              CHART_TYPES.map((type) => h('button', {
+                key: type,
+                type: 'button',
+                className: 'tu-seg-btn',
+                'data-active': chart === type ? 'true' : undefined,
+                'aria-pressed': chart === type,
+                onClick: () => chooseChart(type),
+              }, t(`history.chart.${type}`)))),
             h('div', { className: 'tu-seg', title: t('history.metric.title'), role: 'group' },
             h('button', {
               type: 'button',
@@ -1050,25 +1334,7 @@ window.__ModuleLoader__.load({
               'aria-pressed': metric === 'tokens',
               onClick: () => setMetric('tokens'),
             }, t('history.metric.tokens'))))),
-        hasAny
-          ? h('div', { className: 'tu-bars' }, rows.map((row) => {
-            const ratio = max > 0 ? row[field] / max : 0
-            const title = `${row.key}\n${formatExact(row.total)} tokens\n${t('summary.input')} ${formatExact(row.input)} · ${t('summary.output')} ${formatExact(row.output)}\n${t('summary.cacheRead')} ${formatExact(row.cacheRead)} · ${t('col.cacheWrite')} ${formatExact(row.cacheWrite)}\n${t('col.cost')} ${formatMoney(row.cost, symbol)}`
-            return h('div', {
-              key: row.key,
-              className: 'tu-bar-col',
-              'data-today': row.key === todayKey ? 'true' : undefined,
-              title,
-            },
-            h('span', { className: 'tu-bar-value' }, metric === 'cost' ? formatMoney(row.cost, symbol) : formatTokens(row.total)),
-            h('span', { className: 'tu-bar-track' },
-              h('i', {
-                className: 'tu-bar-fill',
-                style: { height: row[field] > 0 ? `${Math.max(4, Math.round(ratio * 100))}%` : '2px' },
-              })),
-            h('span', { className: 'tu-bar-day' }, formatDayLabel(row.date)))
-          }))
-          : h('div', { className: 'tu-state' }, h('div', { className: 'tu-state-detail' }, t('history.empty'))))
+        chartBody)
     }
 
     /** Sort indicator for one header. */
@@ -1466,6 +1732,13 @@ window.__ModuleLoader__.load({
               data?.generatedAt ? ` · ${t('page.updated', { time: updated })}` : '',
               data?.scanning === true ? ` · ${t('page.scanning')}` : '')),
           h('div', { className: 'tu-head-tools' },
+            h('span', {
+              className: 'tu-now-badge',
+              'data-peak': data?.pricing?.peakNow === true ? 'true' : undefined,
+              title: data?.pricing?.peakNow === true ? t('pricing.now.peak.title') : t('pricing.now.valley.title'),
+            }, data?.pricing?.peakNow === true
+              ? t('pricing.peak.left', { time: formatRemaining((data?.pricing?.nextSwitchAt ?? NaN) - now) })
+              : t('pricing.valley.left', { time: formatRemaining((data?.pricing?.nextSwitchAt ?? NaN) - now) })),
             h('button', {
               type: 'button',
               className: 'tu-btn',

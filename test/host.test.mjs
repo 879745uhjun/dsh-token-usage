@@ -14,6 +14,7 @@ import {
   foldEvent,
   isPeakTime,
   loadPricing,
+  nextSwitchAt,
   normalizePricing,
   priceFor,
   restoreSessionState,
@@ -424,6 +425,48 @@ test('createScanner ignores a corrupt cache file', async () => {
   await scanner.refresh(true)
   assert.equal(scanner.snapshot().totals.input, 3)
   assert.equal(scanner.snapshot().totals.output, 1)
+})
+
+test('foldEvent splits spend into peak and valley windows', () => {
+  const state = createSessionState()
+  foldEvent(state, sessionRecord())
+  const message = (turn, time) => ({
+    type: 'assistant/message',
+    time,
+    data: {
+      turn,
+      step: 1,
+      message: { role: 'assistant', source: { provider: 'demo', model: 'deepseek-flash' } },
+      usage: { inputTokens: 1_000_000, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+    },
+  })
+  // Friday 10:00 Beijing is peak (miss rate 2); Saturday 10:00 is off-peak (1).
+  foldEvent(state, message(1, Date.parse('2026-11-13T02:00:00Z')))
+  foldEvent(state, message(2, Date.parse('2026-11-14T02:00:00Z')))
+  assert.equal(Math.round(state.totals.costPeak * 1e6) / 1e6, 2)
+  assert.equal(Math.round(state.totals.costValley * 1e6) / 1e6, 1)
+  assert.equal(Math.round(state.totals.cost * 1e6) / 1e6, 3)
+  assert.equal(Math.round(state.days.get('2026-11-13').costPeak * 1e6) / 1e6, 2)
+  assert.equal(Math.round(state.days.get('2026-11-14').costValley * 1e6) / 1e6, 1)
+})
+
+test('nextSwitchAt finds the next Beijing pricing boundary', () => {
+  // Friday 10:30 Beijing: peak ends at 12:00.
+  const peakEnd = Date.parse('2026-11-13T02:30:00Z')
+  assert.equal(nextSwitchAt(peakEnd), Date.parse('2026-11-13T04:00:00Z'))
+  // Friday 18:30 Beijing: the next peak starts Monday 09:00.
+  const weekendEve = Date.parse('2026-11-13T10:30:00Z')
+  assert.equal(nextSwitchAt(weekendEve), Date.parse('2026-11-16T01:00:00Z'))
+})
+
+test('scanner reports the current pricing window', async () => {
+  const { sessionsRoot, file } = makeWorkspace()
+  writeFileSync(file, frame([sessionRecord(), assistantMessage(1, 1, { inputTokens: 10, outputTokens: 2 })]))
+  const scanner = createScanner(sessionsRoot)
+  await scanner.refresh(true)
+  const payload = scanner.snapshot()
+  assert.equal(typeof payload.pricing.peakNow, 'boolean')
+  assert.equal(payload.totals.costPeak + payload.totals.costValley, payload.totals.cost)
 })
 
 test('scanner etag stays stable until an artifact changes', async () => {

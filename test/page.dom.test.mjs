@@ -66,8 +66,18 @@ function dayKey(offset) {
 }
 
 /** One day bucket. */
-function day(offset, input, output, cacheRead, cost) {
-  return { day: dayKey(offset), input, output, cacheRead, cacheWrite: 0, total: input + output + cacheRead, cost }
+function day(offset, input, output, cacheRead, cost, peakShare = 0.25) {
+  return {
+    day: dayKey(offset),
+    input,
+    output,
+    cacheRead,
+    cacheWrite: 0,
+    total: input + output + cacheRead,
+    cost,
+    costPeak: cost * peakShare,
+    costValley: cost * (1 - peakShare),
+  }
 }
 
 /**
@@ -126,7 +136,7 @@ function payload() {
     generatedAt: Date.now(),
     scanning: false,
     error: null,
-    pricing: { currency: 'CNY', symbol: '¥', peakMultiplier: 2, source: 'builtin' },
+    pricing: { currency: 'CNY', symbol: '¥', peakMultiplier: 2, source: 'builtin', peakNow: false, nextSwitchAt: Date.now() + 2 * 3600 * 1000 },
     sessions,
     totals: {
       input: 330,
@@ -135,13 +145,15 @@ function payload() {
       cacheWrite: 0,
       total: 960,
       cost: 2.2,
+      costPeak: 0.55,
+      costValley: 1.65,
       todayCost: 1.7,
       sessions: 4,
       today: 860,
     },
     days: [
-      { day: dayKey(0), input: 280, output: 140, cacheRead: 440, cacheWrite: 0, total: 860, cost: 1.7 },
-      { day: dayKey(10), input: 50, output: 25, cacheRead: 25, cacheWrite: 0, total: 100, cost: 0.5 },
+      { day: dayKey(0), input: 280, output: 140, cacheRead: 440, cacheWrite: 0, total: 860, cost: 1.7, costPeak: 0.425, costValley: 1.275 },
+      { day: dayKey(10), input: 50, output: 25, cacheRead: 25, cacheWrite: 0, total: 100, cost: 0.5, costPeak: 0.125, costValley: 0.375 },
     ],
   }
 }
@@ -344,6 +356,30 @@ await waitFor(() => segButtons[1].getAttribute('data-active') === 'true', 'histo
 check('history can switch to tokens', segButtons[1].getAttribute('data-active') === 'true')
 segButtons[0].dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
 await waitFor(() => segButtons[0].getAttribute('data-active') === 'true', 'history metric back')
+
+// Chart forms and the peak/off-peak split.
+const chartSeg = build.container.querySelectorAll('.tu-history-tools .tu-seg')[0]
+const chartButtons = () => Array.from(chartSeg.querySelectorAll('.tu-seg-btn'))
+check('history defaults to bars', build.container.querySelector('.tu-bars') !== null && build.container.querySelector('.tu-line') === null)
+check('current pricing window badge', /^(峰时|谷时)/.test(build.container.querySelector('.tu-now-badge')?.textContent ?? ''),
+  build.container.querySelector('.tu-now-badge')?.textContent ?? '')
+check('pricing badge counts down to the next switch', /剩余/.test(build.container.querySelector('.tu-now-badge')?.textContent ?? ''))
+check('spend bars split peak and valley', build.container.querySelectorAll('.tu-bar-seg').length === 28,
+  String(build.container.querySelectorAll('.tu-bar-seg').length))
+check('split legend names both windows', (build.container.querySelector('.tu-chart-legend')?.textContent ?? '').includes('谷时')
+  && (build.container.querySelector('.tu-chart-legend')?.textContent ?? '').includes('峰时'))
+
+chartButtons()[1].dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+await waitFor(() => build.container.querySelector('.tu-line') !== null, 'line chart')
+check('line chart renders two series', build.container.querySelectorAll('.tu-line polyline').length === 2)
+
+chartButtons()[2].dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+await waitFor(() => build.container.querySelector('.tu-pie') !== null, 'pie chart')
+check('spend pie shows peak and valley', build.container.querySelectorAll('.tu-pie circle[stroke-dasharray]').length === 2,
+  String(build.container.querySelectorAll('.tu-pie circle[stroke-dasharray]').length))
+
+chartButtons()[0].dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+await waitFor(() => build.container.querySelector('.tu-bars') !== null, 'bars back')
 
 // The history window is selectable and remembered in localStorage.
 const bars = () => build.container.querySelectorAll('.tu-bar-col')

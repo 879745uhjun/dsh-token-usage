@@ -35,6 +35,12 @@ dedicated page.
 - **Exports.** Three buttons above the table: **CSV · sessions** (the filtered, sorted
   table with raw integers and a UTF-8 BOM), **CSV · days** (daily totals for the
   selected range), and **Copy table** (a Markdown table ready to paste).
+- **Three chart forms.** The history strip switches between **bars, line, and pie**
+  (the choice is remembered) at one fixed height, so switching never jumps. Spend
+  is split into **peak and off-peak**: a dashed peak line beside the off-peak area,
+  two-tone stacked bars, or a two-slice donut. The header shows a
+  **“Off-peak · 1h 30m left”** badge naming the window in force and the time until
+  the next switch.
 - **Workspace grouping and sub-sessions.** Rows group under their workspace with
   a subtotal; a subagent session folds into its parent as a chip
   (`1 sub-sessions · ¥1.22`) that expands inline. Grouping can be turned off.
