@@ -85,7 +85,7 @@ there.
 | File | Role |
 | --- | --- |
 | `index.js` | Host half: incremental Zstandard frame reader over `~/.dsh/sessions`, the usage fold, and the read-only `/token-usage` route. |
-| `client.js` | Browser half: the global panel, summary strip, 14-day history strip, sortable table, and polling. |
+| `client.js` | Browser half: the global panel, summary strip, 7/14/30-day history strip, sortable table, exports, and polling. |
 
 The Host half registers no tool and adds no prompt content; it serves one
 read-only JSON route. Artifacts are decoded frame by frame, so a poll only reads
@@ -96,6 +96,11 @@ half-written final frame each have their own handling.
   prompt tokens from usage the provider reported; it does not read account
   balances, and it does not know a provider's private rates unless you override
   them.
+- **304 uses size and modification time only.** The poll's `ETag` hashes each
+  artifact's byte size and `mtime`. An external tool that rewrites a log in place
+  to the same size and restores its original `mtime` could make a 304 serve stale
+  content; the normal write path never does this, so no extra fingerprint is
+  computed.
 
 ### Development
 
