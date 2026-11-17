@@ -82,6 +82,14 @@ pnpm add -D jsdom react react-dom
 node test/page.dom.test.mjs      # jsdom 里跑真实 client.js：排序、搜索、筛选、空/错状态
 ```
 
+## 从 GitHub 安装
+
+```sh
+dsh plugin --profile desktop add github:879745uhjun/dsh-token-usage
+```
+
+装好后刷新 Web 页面。
+
 ## License
 
 MIT。

@@ -110,6 +110,14 @@ pnpm add -D jsdom react react-dom
 node test/page.dom.test.mjs      # runs the shipped client.js in jsdom: sorting, search, states
 ```
 
+## Install from GitHub
+
+```sh
+dsh plugin --profile desktop add github:879745uhjun/dsh-token-usage
+```
+
+Reload the Web UI page after installing.
+
 ## License
 
 MIT.
