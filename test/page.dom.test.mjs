@@ -36,6 +36,11 @@ window.URL.revokeObjectURL = () => {}
 window.HTMLAnchorElement.prototype.click = function click() {
   clicks.push({ name: this.download, href: this.href })
 }
+const openWindows = []
+window.open = (url, name) => {
+  openWindows.push({ url: String(url), name: String(name) })
+  return { focus() {}, closed: false }
+}
 Object.defineProperty(window.navigator, 'clipboard', {
   configurable: true,
   value: {
@@ -160,6 +165,7 @@ function payload() {
 
 /** Load the client bundle with a stubbed loader and Host route. */
 function loadPlugin(options) {
+  openWindows.length = 0
   const opened = []
   const panels = []
   const registrations = []
@@ -168,6 +174,21 @@ function loadPlugin(options) {
   document.body.appendChild(container)
   // Lets a test answer the next poll with `304 Not Modified`.
   const fetchState = { notModified: false }
+  // Shared layout selection source, mirroring the host layout store.
+  const panelListeners = new Set()
+  let activePanel = null
+  const panelInfo = {
+    getSnapshot: () => ({ activePanelId: activePanel }),
+    subscribe: (listener) => {
+      panelListeners.add(listener)
+      return () => panelListeners.delete(listener)
+    },
+  }
+  const selectPanel = (id) => {
+    panels.push(id)
+    activePanel = id
+    for (const listener of [...panelListeners]) listener()
+  }
 
   const ctx = {
     effect(fn) {
@@ -201,7 +222,7 @@ function loadPlugin(options) {
       if (name === 'locale') return ctx.locale
       return undefined
     },
-    layout: { selectPanel: (id) => panels.push(id) },
+    layout: { selectPanel, panelInfo },
   }
 
   window.__ModuleLoader__ = {
@@ -507,6 +528,65 @@ await new Promise((resolve) => setTimeout(resolve, 400))
 check('a 304 keeps the current table', page.rows().length === rowsBefore && build.container.querySelector('.tu-state-title') === null,
   `${page.rows().length}/${rowsBefore}`)
 page.unmount()
+
+// ---------------------------------------------------------------------------
+// Presentation modes: in-app (default) and standalone window
+// ---------------------------------------------------------------------------
+
+window.localStorage.removeItem('token-usage:open-mode')
+const inApp = loadPlugin({})
+const inAppPage = mount(inApp)
+await waitFor(() => inAppPage.rows().length === 3, 'in-app rows')
+const findModeButton = () => Array.from(inApp.container.querySelectorAll('.tu-head-tools .tu-btn'))
+  .find((button) => button.textContent === '独立窗口')
+check('open-mode toggle renders', findModeButton() !== undefined)
+check('open mode defaults to in-app', findModeButton().getAttribute('aria-pressed') === 'false'
+  && window.localStorage.getItem('token-usage:open-mode') === null)
+inApp.ctx.layout.selectPanel('token-usage')
+check('in-app mode keeps the panel and opens no window', openWindows.length === 0 && inApp.panels.at(-1) === 'token-usage')
+
+findModeButton().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+await waitFor(() => openWindows.length === 1, 'standalone window')
+check('enabling window mode persists the choice', window.localStorage.getItem('token-usage:open-mode') === 'window')
+check('standalone window carries the surface parameter',
+  openWindows[0].name === 'dsh-token-usage' && openWindows[0].url.includes('dsh-surface=token-usage'), openWindows[0].url)
+
+// Sidebar activation in window mode opens the window and restores the column.
+inApp.ctx.layout.selectPanel(null)
+const beforeSidebar = openWindows.length
+inApp.ctx.layout.selectPanel('token-usage')
+await waitFor(() => openWindows.length === beforeSidebar + 1, 'sidebar opens a window')
+check('sidebar click in window mode restores the previous panel', inApp.panels.at(-1) === null, JSON.stringify(inApp.panels.slice(-3)))
+check('every window uses the same name', openWindows.every((entry) => entry.name === 'dsh-token-usage'))
+
+// Back to in-app.
+inApp.ctx.layout.selectPanel(null)
+findModeButton().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+await waitFor(() => window.localStorage.getItem('token-usage:open-mode') === 'in-app', 'in-app again')
+const beforeBack = openWindows.length
+inApp.ctx.layout.selectPanel('token-usage')
+check('in-app mode no longer opens windows', openWindows.length === beforeBack)
+inAppPage.unmount()
+
+// Persistence: a fresh mount of the same browser keeps the window choice.
+window.localStorage.setItem('token-usage:open-mode', 'window')
+const persisted = loadPlugin({})
+const persistedPage = mount(persisted)
+await waitFor(() => persistedPage.rows().length === 3, 'persisted rows')
+const persistedButton = Array.from(persisted.container.querySelectorAll('.tu-head-tools .tu-btn'))
+  .find((button) => button.textContent === '独立窗口')
+check('window choice persists across mounts', persistedButton.getAttribute('aria-pressed') === 'true')
+persistedPage.unmount()
+window.localStorage.setItem('token-usage:open-mode', 'in-app')
+
+// The surface parameter selects the usage panel on boot.
+window.history.replaceState({}, '', '/?dsh-surface=token-usage')
+const surface = loadPlugin({})
+const surfacePage = mount(surface)
+await waitFor(() => surface.panels.includes('token-usage'), 'surface auto-select')
+check('surface parameter selects the usage panel', surface.panels.includes('token-usage'))
+surfacePage.unmount()
+window.history.replaceState({}, '', '/')
 
 // ---------------------------------------------------------------------------
 // Box grouping (read-only /session-boxes)
