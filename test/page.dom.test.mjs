@@ -213,7 +213,28 @@ function loadPlugin(options) {
       api.apply(ctx)
     },
   }
-  window.fetch = async () => {
+  window.fetch = async (url, init) => {
+    if (String(url).startsWith('/session-boxes')) {
+      if (options.boxesMode === 'missing') {
+        return { ok: false, status: 404, async json() { return {} } }
+      }
+      if (options.boxesMode === 'bad') {
+        return { ok: true, status: 200, async json() { return { ok: true, state: { boxes: 'nope' } } } }
+      }
+      if (options.boxesMode === 'hang') {
+        return new Promise((resolve, reject) => {
+          const signal = init?.signal
+          if (signal !== undefined && signal !== null) signal.addEventListener('abort', () => reject(new Error('aborted')))
+        })
+      }
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return options.boxesPayload ?? { ok: true, state: { boxes: [], memberships: {} } }
+        },
+      }
+    }
     if (options.fail === true) throw new Error('boom')
     if (fetchState.notModified) {
       return {
@@ -321,9 +342,10 @@ page.rows().find((row) => row.textContent.includes('Beta') && !row.classList.con
 await waitFor(() => page.rows().length === 3, 'child row collapsed')
 check('chip collapses the sub-session', page.rows().length === 3)
 
-// Flat list: grouping off, sub-session folding still applies.
-const groupedToggle = build.container.querySelector('.tu-toolbar-toggles .tu-btn')
-groupedToggle.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+// Flat list: the grouping dimension offers workspace and none without boxes.
+const groupButtons = Array.from(build.container.querySelectorAll('.tu-toolbar-toggles .tu-seg .tu-seg-btn'))
+check('grouping offers workspace and none without boxes', groupButtons.length === 2, String(groupButtons.length))
+groupButtons[1].dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
 await waitFor(() => page.groups().length === 0, 'grouping off')
 check('grouping toggle flattens the list', page.groups().length === 0 && page.rows().length === 3)
 
@@ -461,7 +483,7 @@ check('markdown table escapes pipes', copied[0].includes('\\|'), copied[0].split
 check('markdown table has one row per session', copied[0].trim().split('\n').length === 6, String(copied[0].trim().split('\n').length))
 
 // Zero-usage toggle.
-const zeroToggle = build.container.querySelectorAll('.tu-toolbar-toggles .tu-btn')[1]
+const zeroToggle = build.container.querySelectorAll('.tu-toolbar-toggles .tu-btn')[0]
 zeroToggle.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
 await waitFor(() => page.rows().length === 4, 'zero row shown')
 check('zero-usage toggle shows the empty session', page.rows().length === 4)
@@ -485,6 +507,69 @@ await new Promise((resolve) => setTimeout(resolve, 400))
 check('a 304 keeps the current table', page.rows().length === rowsBefore && build.container.querySelector('.tu-state-title') === null,
   `${page.rows().length}/${rowsBefore}`)
 page.unmount()
+
+// ---------------------------------------------------------------------------
+// Box grouping (read-only /session-boxes)
+// ---------------------------------------------------------------------------
+
+const boxesPayload = {
+  ok: true,
+  state: {
+    boxes: [
+      { id: 'b1', name: '项目 A', parentId: null, order: 0 },
+      { id: 'b1c', name: '子盒 A1', parentId: 'b1', order: 1 },
+      { id: 'b2', name: '项目 B', parentId: null, order: 2 },
+    ],
+    memberships: { 'session-a': ['b1c'], 'session-b': ['b1'], 'session-e': ['b1'], 'session-c': ['b2'] },
+  },
+}
+
+const boxed = loadPlugin({ boxesPayload })
+const boxedPage = mount(boxed)
+await waitFor(() => boxedPage.rows().length === 3, 'boxed rows load')
+const boxButtons = Array.from(boxed.container.querySelectorAll('.tu-toolbar-toggles .tu-seg .tu-seg-btn'))
+check('box dimension appears when boxes load', boxButtons.length === 3, String(boxButtons.length))
+boxButtons[1].dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+await waitFor(() => boxedPage.groups().length === 2, 'box groups')
+check('box groups follow the box tree',
+  boxedPage.groups()[0].textContent.includes('项目 A') && boxedPage.groups()[1].textContent.includes('项目 B'),
+  boxedPage.groups().map((row) => row.textContent.slice(0, 12)).join('|'))
+check('parent box includes child-box members', (boxedPage.groups()[0].textContent ?? '').includes('¥2.05'),
+  boxedPage.groups()[0].textContent.slice(0, 90))
+check('child box label rides the row', boxedPage.rows().some((row) => row.textContent.includes('项目 A / 子盒 A1')))
+
+// Ungrouped sessions land in a trailing group.
+boxed.container.querySelectorAll('.tu-toolbar-toggles .tu-btn')[0]
+  .dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+await waitFor(() => boxedPage.groups().length === 3, 'ungrouped group')
+check('ungrouped sits last', boxedPage.groups().at(-1).textContent.includes('未分组'), boxedPage.groups().map((row) => row.textContent.slice(0, 8)).join('|'))
+
+// Exports carry the box column.
+const clicksBefore = clicks.length
+boxed.container.querySelectorAll('.tu-toolbar-export .tu-btn')[0]
+  .dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+await waitFor(() => clicks.length > clicksBefore, 'boxed csv')
+const boxedCsv = await downloads.at(-1).text()
+check('csv carries the box column', boxedCsv.split('\r\n')[0].includes('盒子') && boxedCsv.includes('项目 A / 子盒 A1'))
+const copiedBefore = copied.length
+boxed.container.querySelectorAll('.tu-toolbar-export .tu-btn')[2]
+  .dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+await waitFor(() => copied.length > copiedBefore, 'boxed markdown')
+check('markdown carries the box column', copied.at(-1).includes('盒子') && copied.at(-1).includes('项目 A / 子盒 A1'))
+boxedPage.unmount()
+
+// Degradations: 404, malformed JSON, and a hanging route all fall back silently.
+for (const mode of ['missing', 'bad', 'hang']) {
+  const degraded = loadPlugin({ boxesMode: mode })
+  const degradedPage = mount(degraded)
+  await waitFor(() => degradedPage.rows().length === 3, `${mode} rows`)
+  if (mode === 'hang') await new Promise((resolve) => setTimeout(resolve, 1700))
+  const buttons = degraded.container.querySelectorAll('.tu-toolbar-toggles .tu-seg .tu-seg-btn')
+  check(`${mode}: box dimension hidden and workspace grouping kept`,
+    buttons.length === 2 && degradedPage.groups().length === 2 && degraded.container.querySelector('.tu-state-title') === null,
+    `${buttons.length}/${degradedPage.groups().length}`)
+  degradedPage.unmount()
+}
 
 // ---------------------------------------------------------------------------
 // Error and empty states

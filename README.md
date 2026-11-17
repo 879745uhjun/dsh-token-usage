@@ -41,6 +41,12 @@ dedicated page.
   two-tone stacked bars, or a two-slice donut. The header shows a
   **“Off-peak · 1h 30m left”** badge naming the window in force and the time until
   the next switch.
+- **Box aggregation.** The grouping switch offers **workspace / box / none**. Box
+  data is read-only from dsh-session-boxes' `/session-boxes`: a parent box contains
+  its child boxes' sessions, ungrouped sessions come last, rows carry a
+  `parent / child` label, and both CSV exports and the Markdown copy gain a Box
+  column. A missing route, a 1.5 s timeout, or a malformed payload silently falls
+  back to workspace grouping.
 - **Workspace grouping and sub-sessions.** Rows group under their workspace with
   a subtotal; a subagent session folds into its parent as a chip
   (`1 sub-sessions · ¥1.22`) that expands inline. Grouping can be turned off.

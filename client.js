@@ -25,6 +25,9 @@ window.__ModuleLoader__.load({
     const NS = 'token-usage'
     const PANEL_ID = 'token-usage'
     const ENDPOINT = '/token-usage'
+    /** Read-only session-box route owned by dsh-session-boxes. */
+    const BOXES_ENDPOINT = '/session-boxes'
+    const BOXES_TIMEOUT_MS = 1500
     const POLL_MS = 2000
     /** Selectable history windows, remembered per browser. */
     const HISTORY_WINDOWS = [7, 14, 30]
@@ -55,6 +58,12 @@ window.__ModuleLoader__.load({
       'page.search': 'Search sessions, workspaces, models',
       'page.range': 'Time range',
       'page.group': 'Group by workspace',
+      'page.grouping': 'Group by',
+      'group.workspace': 'Workspace',
+      'group.box': 'Box',
+      'group.none': 'None',
+      'group.ungrouped': 'Ungrouped',
+      'csv.box': 'Box',
       'export.label': 'Export',
       'export.sessions': 'CSV · sessions',
       'export.sessions.title': 'Download every filtered session as CSV',
@@ -178,6 +187,12 @@ window.__ModuleLoader__.load({
       'page.search': '搜索会话、工作区、模型',
       'page.range': '时间范围',
       'page.group': '按工作区分组',
+      'page.grouping': '分组方式',
+      'group.workspace': '工作区',
+      'group.box': '盒子',
+      'group.none': '不分',
+      'group.ungrouped': '未分组',
+      'csv.box': '盒子',
       'export.label': '导出',
       'export.sessions': 'CSV · 会话',
       'export.sessions.title': '把当前筛选出的会话导出为 CSV',
@@ -359,9 +374,10 @@ body[data-ds-dark-theme]{--dshc-blue:#4C8DFF;--dshc-green:#3FB950;--dshc-amber:#
 .tu-bars{flex:1;min-height:0;display:flex;align-items:flex-end;gap:6px}
 .tu-bar-col{height:100%}
 .tu-bar-track{flex:1;min-height:0;height:auto}
-.tu-chart-legend{display:flex;align-items:center;justify-content:flex-end;gap:14px;margin:0 0 8px;font-size:11px}
+.tu-chart-legend{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px 14px;margin:0 0 8px;font-size:11px}
 .tu-chart-legend .tu-legend-item{display:inline-flex;align-items:center;gap:6px;color:var(--dsw-alias-label-secondary)}
 .tu-chart-legend .tu-legend-value{font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-primary)}
+.tu-chart-legend .tu-legend-pct{font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-tertiary);min-width:30px;text-align:right}
 .tu-bar-track[data-split=true]{flex-direction:column-reverse;align-items:stretch}
 .tu-bar-seg{display:block;width:100%}
 .tu-bar-seg[data-kind=valley]{background:var(--dshc-blue)}
@@ -371,16 +387,15 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
 .tu-now-badge{display:inline-flex;align-items:center;height:18px;padding:0 7px;border-radius:999px;font-size:10px;line-height:16px;color:var(--dsw-alias-state-success-primary);background:color-mix(in srgb, var(--dsw-alias-state-success-primary) 14%, transparent)}
 .tu-now-badge[data-peak=true]{color:var(--dsw-alias-state-warn-primary);background:color-mix(in srgb, var(--dsw-alias-state-warn-primary) 16%, transparent)}
 .tu-line svg{display:block;width:100%;height:auto;flex:1;min-height:0}
-.tu-line-max{position:absolute;top:10px;right:16px;font-size:10px;color:var(--dsw-alias-label-tertiary)}
+.tu-pie{display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:0;height:100%}
+.tu-pie-body{flex:1;min-height:0;display:flex;align-items:center;justify-content:center}
+.tu-pie-body svg{width:168px;height:168px;max-height:100%;flex:none}
 .tu-line-days{display:flex;justify-content:space-between;gap:4px;margin-top:6px;overflow:hidden}
 .tu-line-days .tu-bar-day{flex:1 1 0;text-align:center;min-width:0}
-.tu-pie{display:flex;flex-direction:row;align-items:center;justify-content:center;gap:20px;flex-wrap:wrap;height:100%}
-.tu-pie svg{width:168px;height:168px;flex:none}
 .tu-pie-total{font-size:9px;font-weight:600;fill:var(--dsw-alias-label-primary)}
 .tu-pie-caption{font-size:6px;fill:var(--dsw-alias-label-tertiary)}
-.tu-legend{display:flex;flex-direction:column;gap:6px;min-width:220px}
-.tu-legend-item{display:grid;grid-template-columns:10px 1fr auto auto;align-items:center;gap:8px;font-size:11px;color:var(--dsw-alias-label-secondary)}
-.tu-legend-dot{width:8px;height:8px;border-radius:2px}
+.tu-legend-item{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--dsw-alias-label-secondary)}
+.tu-legend-dot{display:inline-block;width:8px;height:8px;border-radius:2px;flex:none}
 .tu-legend-label{color:var(--dsw-alias-label-secondary)}
 .tu-legend-value{font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-primary)}
 .tu-legend-pct{font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-tertiary);min-width:34px;text-align:right}
@@ -565,12 +580,116 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
       }
     }
 
+    /** Box id/name resolution over the read-only `/session-boxes` state. */
+    function buildBoxInfo(state) {
+      const list = Array.isArray(state?.boxes)
+        ? state.boxes.filter((box) => typeof box?.id === 'string' && typeof box?.name === 'string')
+        : []
+      if (list.length === 0) return undefined
+      const byId = new Map(list.map((box) => [box.id, box]))
+      const rootOfBox = (id) => {
+        let current = byId.get(id)
+        const seen = new Set()
+        while (current !== undefined && typeof current.parentId === 'string' && byId.has(current.parentId) && !seen.has(current.id)) {
+          seen.add(current.id)
+          current = byId.get(current.parentId)
+        }
+        return current ?? undefined
+      }
+      const roots = list.filter((box) => rootOfBox(box.id) === box)
+      const assigned = new Map()
+      const memberships = state?.memberships !== null && typeof state?.memberships === 'object' ? state.memberships : {}
+      for (const [sessionId, ids] of Object.entries(memberships)) {
+        if (!Array.isArray(ids) || ids.length === 0) continue
+        const box = ids.map((id) => byId.get(id)).find((candidate) => candidate !== undefined)
+        if (box !== undefined) assigned.set(sessionId, box)
+      }
+      return {
+        roots,
+        /** `根盒 / 子盒` label, or undefined when the session sits in no box. */
+        labelOf(sessionId) {
+          const box = assigned.get(sessionId)
+          if (box === undefined) return undefined
+          const root = rootOfBox(box.id)
+          return root !== undefined && root !== box ? `${root.name} / ${box.name}` : box.name
+        },
+        /** Top-level box a session belongs to, or null when it sits in no box. */
+        rootOf(sessionId) {
+          const box = assigned.get(sessionId)
+          if (box === undefined) return null
+          const root = rootOfBox(box.id)
+          return root === undefined ? null : root.id
+        },
+      }
+    }
+
+    /** Usable box info from one `/session-boxes` response, or undefined. */
+    function normalizeBoxes(payload) {
+      if (payload === null || typeof payload !== 'object' || payload.ok === false) return undefined
+      const state = payload.state
+      if (state === null || typeof state !== 'object' || !Array.isArray(state.boxes)) return undefined
+      return buildBoxInfo(state)
+    }
+
+    /** Cost and token sum of one group's rows. */
+    function groupTotals(rows) {
+      return rows.reduce((totals, row) => {
+        totals.cost += Number(row.cost) || 0
+        totals.total += Number(row.total) || 0
+        return totals
+      }, { cost: 0, total: 0 })
+    }
+
+    /**
+     * Turn flat rows into display groups.
+     * `workspace` groups by working directory (largest spend first), `box`
+     * groups by top-level session box (box order, ungrouped last), `none`
+     * returns one unnamed group.
+     */
+    function buildGroups(rows, mode, boxInfo, ungroupedLabel) {
+      if (mode === 'none') return [{ key: '*', name: null, order: 0, rows }]
+      const map = new Map()
+      const ensure = (key, name, order) => {
+        let group = map.get(key)
+        if (group === undefined) {
+          group = { key, name, order, rows: [] }
+          map.set(key, group)
+        }
+        return group
+      }
+      if (mode === 'box' && boxInfo !== undefined) {
+        for (const root of [...boxInfo.roots].sort((left, right) => (left.order ?? 0) - (right.order ?? 0) || left.name.localeCompare(right.name))) {
+          ensure(root.id, root.name, root.order ?? 0)
+        }
+        for (const row of rows) {
+          const rootId = boxInfo.rootOf(row.sessionId)
+          const group = rootId === null
+            ? ensure('__ungrouped__', ungroupedLabel, Number.MAX_SAFE_INTEGER)
+            : map.get(rootId) ?? ensure(rootId, rootId, 0)
+          group.rows.push(row)
+        }
+      } else {
+        for (const row of rows) {
+          const key = row.workspace?.path ?? row.workspace?.name ?? '—'
+          ensure(key, row.workspace?.name ?? key, 0).rows.push(row)
+        }
+      }
+      const groups = [...map.values()].filter((group) => group.rows.length > 0)
+      if (mode === 'box') {
+        groups.sort((left, right) => left.order - right.order || String(left.name).localeCompare(String(right.name)))
+      } else {
+        groups.sort((left, right) => groupTotals(right.rows).cost - groupTotals(left.rows).cost || String(left.name).localeCompare(String(right.name)))
+      }
+      return groups
+    }
+
     /** One session per row, with raw numbers a spreadsheet can sum. */
-    function sessionCsv(rows, symbol, t) {
+    function sessionCsv(rows, symbol, t, boxLabelOf) {
       const unit = typeof symbol === 'string' && symbol.length > 0 ? symbol : '¥'
       const header = [
         t('col.session'),
         t('csv.workspace'),
+        t('csv.box'),
         t('col.model'),
         t('col.input'),
         t('col.output'),
@@ -589,6 +708,7 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
         return [
           row.displayTitle ?? row.title ?? '',
           row.workspace?.name ?? '',
+          typeof boxLabelOf === 'function' ? boxLabelOf(row.sessionId) ?? '' : '',
           row.model ?? '',
           Math.round(Number(row.input) || 0),
           Math.round(Number(row.output) || 0),
@@ -631,17 +751,18 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
     }
 
     /** The filtered table as a portable Markdown table. */
-    function markdownTable(rows, symbol, t) {
+    function markdownTable(rows, symbol, t, boxLabelOf) {
       const header = [
         t('col.session'),
         t('csv.workspace'),
+        t('csv.box'),
         t('col.model'),
         t('col.total'),
         t('col.cost'),
         t('col.hit'),
         t('col.last'),
       ]
-      const align = ['---', '---', '---', '---:', '---:', '---:', '---']
+      const align = ['---', '---', '---', '---', '---:', '---:', '---:', '---']
       const cell = (value) => String(value ?? '').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ')
       const lines = [`| ${header.map(cell).join(' | ')} |`, `| ${align.join(' | ')} |`]
       for (const row of rows) {
@@ -649,6 +770,7 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
         lines.push(`| ${[
           cell(row.displayTitle ?? row.title ?? ''),
           cell(row.workspace?.name ?? ''),
+          cell(typeof boxLabelOf === 'function' ? boxLabelOf(row.sessionId) ?? '' : ''),
           cell(row.model ?? ''),
           formatExact(row.total),
           formatMoney(row.cost, symbol),
@@ -1096,19 +1218,23 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
       return metric === 'cost' ? formatMoney(row.cost, symbol) : formatTokens(row.total)
     }
 
-    /** Peak/off-peak totals for the window, shown above split charts. */
+    /** Peak/off-peak legend: same rows, same order, same columns for every chart. */
     function HistoryLegend({ rows, symbol, t }) {
       const valley = rows.reduce((sum, row) => sum + (Number(row.costValley) || 0), 0)
       const peak = rows.reduce((sum, row) => sum + (Number(row.costPeak) || 0), 0)
+      const total = valley + peak
+      const share = (value) => `${total > 0 ? Math.round((value / total) * 100) : 0}%`
       return h('div', { className: 'tu-chart-legend' },
         h('span', { className: 'tu-legend-item' },
           h('i', { className: 'tu-legend-dot', style: { background: PEAK_COLORS.valley } }),
           h('span', { className: 'tu-legend-label' }, t('history.valleyTime')),
-          h('span', { className: 'tu-legend-value' }, formatMoney(valley, symbol))),
+          h('span', { className: 'tu-legend-value' }, formatMoney(valley, symbol)),
+          h('span', { className: 'tu-legend-pct' }, share(valley))),
         h('span', { className: 'tu-legend-item' },
           h('i', { className: 'tu-legend-dot', style: { background: PEAK_COLORS.peak } }),
           h('span', { className: 'tu-legend-label' }, t('history.peakTime')),
-          h('span', { className: 'tu-legend-value' }, formatMoney(peak, symbol))))
+          h('span', { className: 'tu-legend-value' }, formatMoney(peak, symbol)),
+          h('span', { className: 'tu-legend-pct' }, share(peak))))
     }
 
     /** Bars: one tone for tokens, off-peak + peak stacked for spend. */
@@ -1156,9 +1282,6 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
       const area = `0,100 ${line} 100,100`
       return h('div', { className: 'tu-chart tu-line' },
         split ? h(HistoryLegend, { rows, symbol, t }) : null,
-        h('div', { className: 'tu-line-max' }, t('history.peak', {
-          value: metric === 'cost' ? formatMoney(max, symbol) : formatTokens(max),
-        })),
         h('svg', { viewBox: '0 0 100 100', preserveAspectRatio: 'none', role: 'img', 'aria-label': t('history.chart.line') },
           h('defs', null,
             h('linearGradient', { id: 'tu-line-fill', x1: '0', y1: '0', x2: '0', y2: '1' },
@@ -1231,6 +1354,12 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
       let offset = 0
       const format = (value) => (metric === 'cost' ? formatMoney(value, symbol) : formatTokens(value))
       return h('div', { className: 'tu-chart tu-pie' },
+        h('div', { className: 'tu-chart-legend' }, slices.map((slice, index) => h('span', { key: slice.key, className: 'tu-legend-item' },
+          h('i', { className: 'tu-legend-dot', style: { background: colors[index % colors.length] } }),
+          h('span', { className: 'tu-legend-label' }, slice.label),
+          h('span', { className: 'tu-legend-value' }, format(slice.value)),
+          h('span', { className: 'tu-legend-pct' }, `${total > 0 ? Math.round((slice.value / total) * 100) : 0}%`)))),
+        h('div', { className: 'tu-pie-body' },
         h('svg', { viewBox: '0 0 100 100', role: 'img', 'aria-label': t('history.chart.pie') },
           h('circle', { cx: 50, cy: 50, r: 40, fill: 'none', style: { stroke: 'var(--dsw-alias-bg-layer-2)' }, strokeWidth: 18 }),
           slices.map((slice, index) => {
@@ -1253,12 +1382,7 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
           }),
           h('text', { x: 50, y: 48, textAnchor: 'middle', className: 'tu-pie-total' }, format(total)),
           h('text', { x: 50, y: 60, textAnchor: 'middle', className: 'tu-pie-caption' },
-            t(metric === 'cost' ? 'history.metric.cost' : 'history.metric.tokens'))),
-        h('div', { className: 'tu-legend' }, slices.map((slice, index) => h('span', { key: slice.key, className: 'tu-legend-item' },
-          h('i', { className: 'tu-legend-dot', style: { background: colors[index % colors.length] } }),
-          h('span', { className: 'tu-legend-label' }, slice.label),
-          h('span', { className: 'tu-legend-value' }, format(slice.value)),
-          h('span', { className: 'tu-legend-pct' }, `${total > 0 ? Math.round((slice.value / total) * 100) : 0}%`)))))
+            t(metric === 'cost' ? 'history.metric.cost' : 'history.metric.tokens')))))
     }
 
     function HistoryStrip({ data, t, now, windowDays, onDaysChange }) {
@@ -1419,6 +1543,7 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
             : null),
         h('div', { className: 'tu-sub-line', title: row.workspace?.path ?? '' },
           row.workspace?.name ?? '—',
+          typeof row.boxLabel === 'string' && row.boxLabel.length > 0 ? ` · ${row.boxLabel}` : '',
           row.error ? h('span', { className: 'tu-flag', title: row.error }, ' · !') : null)),
       h('td', { className: 'tu-td tu-td-model', title: row.model ?? '' }, row.model ?? t('row.unknownModel')),
       h('td', { className: 'tu-td tu-td-num', title: formatExact(row.input) }, formatTokens(row.input)),
@@ -1438,33 +1563,8 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
     }
 
     /** The sortable Session table. */
-    function SessionTable({ rows, hiddenCount, sort, onSort, now, onOpen, t, symbol, grouped, expanded, onToggleChildren }) {
+    function SessionTable({ rows, groups, hiddenCount, sort, onSort, now, onOpen, t, symbol, expanded, onToggleChildren }) {
       const peak = rows.reduce((value, row) => Math.max(value, Number(row.total) || 0), 0)
-      /** Grouped rows plus each group's subtotal. */
-      const groups = useMemo(() => {
-        if (!grouped) {
-          return [{
-            key: '*',
-            name: null,
-            rows,
-            cost: rows.reduce((sum, row) => sum + (Number(row.cost) || 0), 0),
-            total: rows.reduce((sum, row) => sum + (Number(row.total) || 0), 0),
-          }]
-        }
-        const map = new Map()
-        for (const row of rows) {
-          const key = row.workspace?.path ?? row.workspace?.name ?? '—'
-          let group = map.get(key)
-          if (group === undefined) {
-            group = { key, name: row.workspace?.name ?? key, rows: [], cost: 0, total: 0 }
-            map.set(key, group)
-          }
-          group.rows.push(row)
-          group.cost += Number(row.cost) || 0
-          group.total += Number(row.total) || 0
-        }
-        return [...map.values()].sort((left, right) => right.cost - left.cost || String(left.name).localeCompare(String(right.name)))
-      }, [rows, grouped])
 
       /** One group's rows, with sub-sessions nested under their parent. */
       const renderGroupRows = (group) => {
@@ -1535,18 +1635,21 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
                   h(SortableHeader, { column: 'cost', label: t('col.cost'), sort, onSort, numeric: true, title: t('col.cost.title') }),
                   h(SortableHeader, { column: 'hit', label: t('col.hit'), sort, onSort, numeric: true, title: t('col.hit.title') }),
                   h(SortableHeader, { column: 'lastActivityAt', label: t('col.last'), sort, onSort, numeric: true, title: t('col.last.title') }))),
-              groups.map((group) => h('tbody', { key: group.key, className: 'tu-group' },
-                group.name === null
-                  ? null
-                  : h('tr', { className: 'tu-group-row' },
-                    h('td', { colSpan: 10 },
-                      h('span', { className: 'tu-group-name' }, group.name),
-                      h('span', { className: 'tu-group-meta' }, t('group.meta', {
-                        count: group.rows.length,
-                        total: formatTokens(group.total),
-                        cost: formatMoney(group.cost, symbol),
-                      })))),
-                renderGroupRows(group))))),
+              groups.map((group) => {
+                const totals = groupTotals(group.rows)
+                return h('tbody', { key: group.key, className: 'tu-group' },
+                  group.name === null
+                    ? null
+                    : h('tr', { className: 'tu-group-row' },
+                      h('td', { colSpan: 10 },
+                        h('span', { className: 'tu-group-name' }, group.name),
+                        h('span', { className: 'tu-group-meta' }, t('group.meta', {
+                          count: group.rows.length,
+                          total: formatTokens(totals.total),
+                          cost: formatMoney(totals.cost, symbol),
+                        })))),
+                  renderGroupRows(group))
+              }))),
         hiddenCount > 0 ? h('div', { className: 'tu-note' }, t('row.more', { count: hiddenCount })) : null)
     }
 
@@ -1585,11 +1688,42 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
       const [showZero, setShowZero] = useState(false)
       const [range, setRange] = useState('all')
       const [historyDays, setHistoryDays] = useState(readHistoryDays)
-      const [grouped, setGrouped] = useState(true)
+      const [grouping, setGrouping] = useState('workspace')
+      const [boxInfo, setBoxInfo] = useState(null)
       const [expanded, setExpanded] = useState(() => new Set())
       const [sort, setSort] = useState({ key: 'total', direction: 'desc' })
       const now = useNow(30000)
       const { status, data, error, fetchedAt, refresh } = useUsageData({ live, revision: 0 })
+
+      // Session boxes are optional: a missing, slow, or malformed route only
+      // hides the box dimension; it never blocks the page.
+      useEffect(() => {
+        let cancelled = false
+        const controller = new AbortController()
+        const timer = window.setTimeout(() => controller.abort(), BOXES_TIMEOUT_MS)
+        const load = async () => {
+          try {
+            const response = await fetch(BOXES_ENDPOINT, {
+              signal: controller.signal,
+              cache: 'no-store',
+              headers: { accept: 'application/json' },
+            })
+            if (!response.ok) throw new Error(`HTTP ${response.status}`)
+            const body = await response.json()
+            if (!cancelled) setBoxInfo(normalizeBoxes(body) ?? null)
+          } catch {
+            if (!cancelled) setBoxInfo(null)
+          } finally {
+            window.clearTimeout(timer)
+          }
+        }
+        void load()
+        return () => {
+          cancelled = true
+          window.clearTimeout(timer)
+          controller.abort()
+        }
+      }, [])
 
       const openSession = useCallback((sessionId) => {
         if (typeof sessionId !== 'string' || sessionId.length === 0) return
@@ -1682,7 +1816,20 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
       }, [rangedRows, needle])
 
       const visible = useMemo(() => matched.filter((row) => showZero || (Number(row.total) || 0) > 0), [matched, showZero])
-      const sorted = useMemo(() => [...visible].sort((left, right) => compareRows(left, right, sort)), [visible, sort])
+      const sorted = useMemo(() => {
+        const list = [...visible].sort((left, right) => compareRows(left, right, sort))
+        if (boxInfo === null) return list
+        return list.map((row) => ({ ...row, boxLabel: boxInfo.labelOf(row.sessionId) }))
+      }, [visible, sort, boxInfo])
+      const boxLabelOf = useCallback(
+        (sessionId) => (boxInfo === null ? undefined : boxInfo.labelOf(sessionId)),
+        [boxInfo],
+      )
+      const effectiveGrouping = grouping === 'box' && boxInfo === null ? 'workspace' : grouping
+      const groups = useMemo(
+        () => buildGroups(sorted, effectiveGrouping, boxInfo ?? undefined, t('group.ungrouped')),
+        [sorted, effectiveGrouping, boxInfo, t],
+      )
       const rows = sorted.length > MAX_ROWS ? sorted.slice(0, MAX_ROWS) : sorted
       const hiddenCount = matched.length - rows.length
 
@@ -1708,9 +1855,9 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
 
       const exportSessions = useCallback(() => {
         const name = `token-usage-sessions-${shiftDayKey(0)}.csv`
-        downloadText(name, sessionCsv(sorted, data?.pricing?.symbol, t), 'text/csv')
+        downloadText(name, sessionCsv(sorted, data?.pricing?.symbol, t, boxLabelOf), 'text/csv')
         flash(t('export.downloaded', { name }))
-      }, [sorted, data, t, flash])
+      }, [sorted, data, t, boxLabelOf, flash])
 
       const exportDays = useCallback(() => {
         const start = rangeStartKey(range)
@@ -1721,9 +1868,9 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
       }, [data, range, t, flash])
 
       const copyTable = useCallback(async () => {
-        const copied = await copyText(markdownTable(sorted, data?.pricing?.symbol, t))
+        const copied = await copyText(markdownTable(sorted, data?.pricing?.symbol, t, boxLabelOf))
         flash(copied ? t('export.copied') : t('export.copyFailed'), copied ? 'ok' : 'error')
-      }, [sorted, data, t, flash])
+      }, [sorted, data, t, boxLabelOf, flash])
 
       const updated = fetchedAt > 0 ? relativeTime(fetchedAt, now, t) : ''
 
@@ -1840,14 +1987,30 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
                         ? null
                         : h('span', { className: 'tu-export-note', role: 'status', 'data-tone': notice.tone }, notice.text),
                       h('div', { className: 'tu-toolbar-toggles' },
-                        h('button', {
-                          type: 'button',
-                          className: 'tu-btn',
-                          'data-active': grouped ? 'true' : undefined,
-                          'aria-pressed': grouped,
-                          title: t('page.group'),
-                          onClick: () => setGrouped((value) => !value),
-                        }, t('page.group')),
+                        h('div', { className: 'tu-seg', role: 'group', title: t('page.grouping') },
+                          h('button', {
+                            type: 'button',
+                            className: 'tu-seg-btn',
+                            'data-active': effectiveGrouping === 'workspace' ? 'true' : undefined,
+                            'aria-pressed': effectiveGrouping === 'workspace',
+                            onClick: () => setGrouping('workspace'),
+                          }, t('group.workspace')),
+                          boxInfo === null
+                            ? null
+                            : h('button', {
+                              type: 'button',
+                              className: 'tu-seg-btn',
+                              'data-active': effectiveGrouping === 'box' ? 'true' : undefined,
+                              'aria-pressed': effectiveGrouping === 'box',
+                              onClick: () => setGrouping('box'),
+                            }, t('group.box')),
+                          h('button', {
+                            type: 'button',
+                            className: 'tu-seg-btn',
+                            'data-active': effectiveGrouping === 'none' ? 'true' : undefined,
+                            'aria-pressed': effectiveGrouping === 'none',
+                            onClick: () => setGrouping('none'),
+                          }, t('group.none'))),
                         h('button', {
                           type: 'button',
                           className: 'tu-btn',
@@ -1857,6 +2020,7 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
                         }, showZero ? t('page.hideZero') : t('page.showZero')))),
                     h(SessionTable, {
                       rows,
+                      groups,
                       hiddenCount,
                       sort,
                       onSort,
@@ -1864,7 +2028,6 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
                       onOpen: openSession,
                       t,
                       symbol: data.pricing?.symbol,
-                      grouped,
                       expanded,
                       onToggleChildren: toggleChildren,
                     })))))
