@@ -154,6 +154,8 @@ function loadPlugin(options) {
   const dicts = {}
   const container = document.createElement('div')
   document.body.appendChild(container)
+  // Lets a test answer the next poll with `304 Not Modified`.
+  const fetchState = { notModified: false }
 
   const ctx = {
     effect(fn) {
@@ -201,16 +203,27 @@ function loadPlugin(options) {
   }
   window.fetch = async () => {
     if (options.fail === true) throw new Error('boom')
+    if (fetchState.notModified) {
+      return {
+        ok: true,
+        status: 304,
+        headers: { get: () => undefined },
+        async json() {
+          throw new Error('a 304 body must never be parsed')
+        },
+      }
+    }
     return {
       ok: true,
       status: 200,
+      headers: { get: (name) => (String(name).toLowerCase() === 'etag' ? 'W/"dom"' : null) },
       async json() {
         return options.data ?? payload()
       },
     }
   }
   window.eval(SOURCE)
-  return { container, opened, panels, registrations, ctx, dicts }
+  return { container, opened, panels, registrations, ctx, dicts, fetchState }
 }
 
 /** Mount the registered main panel into its container. */
@@ -332,6 +345,16 @@ check('history can switch to tokens', segButtons[1].getAttribute('data-active') 
 segButtons[0].dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
 await waitFor(() => segButtons[0].getAttribute('data-active') === 'true', 'history metric back')
 
+// The history window is selectable and remembered in localStorage.
+const bars = () => build.container.querySelectorAll('.tu-bar-col')
+check('history defaults to 14 days', bars().length === 14, String(bars().length))
+const historySelect = build.container.querySelector('.tu-select-sm')
+setValue(window, historySelect, '7', 'change')
+await waitFor(() => bars().length === 7, '7-day history window')
+check('history window follows the select', bars().length === 7)
+setValue(window, historySelect, '14', 'change')
+await waitFor(() => bars().length === 14, '14-day history window')
+
 // Search.
 const input = build.container.querySelector('.tu-search')
 setValue(window, input, 'Beta')
@@ -416,6 +439,15 @@ check('row click opens the session', build.opened[0] === 'session-b', JSON.strin
 const back = Array.from(build.container.querySelectorAll('.tu-head-tools .tu-btn')).at(-1)
 back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
 check('back button returns to chat', build.panels.at(-1) === null, JSON.stringify(build.panels))
+
+// A 304 from the Host keeps the rendered table instead of clearing or erroring.
+build.fetchState.notModified = true
+const rowsBefore = page.rows().length
+Array.from(build.container.querySelectorAll('.tu-head-tools .tu-btn'))[1]
+  .dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+await new Promise((resolve) => setTimeout(resolve, 400))
+check('a 304 keeps the current table', page.rows().length === rowsBefore && build.container.querySelector('.tu-state-title') === null,
+  `${page.rows().length}/${rowsBefore}`)
 page.unmount()
 
 // ---------------------------------------------------------------------------

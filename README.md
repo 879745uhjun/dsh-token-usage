@@ -16,8 +16,9 @@ dedicated page.
   Zstandard frames appended since the previous poll are decoded. The page polls
   a same-origin route every two seconds and marks sessions that are still
   running with a green dot and a “running now” badge.
-- **History.** A strip charts the last 14 local calendar days; every session
-  also keeps its own per-day buckets.
+- **History.** A strip charts the last **7 / 14 / 30** local calendar days (the
+  choice is remembered in `localStorage`); every session also keeps its own
+  per-day buckets.
 - **Sorting.** Click any header to toggle ascending / descending: session,
   model, input, output, cache read, cache write, total, spend, cache hit rate,
   last active. Search filters by session, workspace, model, or id; sessions

@@ -425,3 +425,21 @@ test('createScanner ignores a corrupt cache file', async () => {
   assert.equal(scanner.snapshot().totals.input, 3)
   assert.equal(scanner.snapshot().totals.output, 1)
 })
+
+test('scanner etag stays stable until an artifact changes', async () => {
+  const { sessionsRoot, file } = makeWorkspace()
+  writeFileSync(file, frame([sessionRecord(), assistantMessage(1, 1, { inputTokens: 10, outputTokens: 2 })]))
+  const scanner = createScanner(sessionsRoot)
+  await scanner.refresh(true)
+  const first = scanner.etag()
+  assert.match(first, /^W\/"/)
+  await scanner.refresh(true)
+  assert.equal(scanner.etag(), first, 'an unchanged scan keeps the validator')
+
+  writeFileSync(file, Buffer.concat([
+    readFileSync(file),
+    frame([assistantMessage(1, 2, { inputTokens: 5, outputTokens: 1 })]),
+  ]))
+  await scanner.refresh(true)
+  assert.notEqual(scanner.etag(), first, 'appended bytes change the validator')
+})

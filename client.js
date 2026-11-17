@@ -26,7 +26,9 @@ window.__ModuleLoader__.load({
     const PANEL_ID = 'token-usage'
     const ENDPOINT = '/token-usage'
     const POLL_MS = 2000
-    const HISTORY_DAYS = 14
+    /** Selectable history windows, remembered per browser. */
+    const HISTORY_WINDOWS = [7, 14, 30]
+    const HISTORY_STORAGE_KEY = 'token-usage.history-days'
     const MAX_ROWS = 500
 
     /** Selectable summary/table windows; `null` keeps the whole lifetime. */
@@ -109,6 +111,8 @@ window.__ModuleLoader__.load({
       'history.metric.cost': 'Spend',
       'history.metric.tokens': 'Tokens',
       'history.metric.title': 'Switch what the history bars measure',
+      'history.window': 'History window',
+      'history.days': '{days} days',
       'col.session': 'Session',
       'col.model': 'Model',
       'col.input': 'Input',
@@ -214,6 +218,8 @@ window.__ModuleLoader__.load({
       'history.metric.cost': '花费',
       'history.metric.tokens': 'tokens',
       'history.metric.title': '切换历史条的统计口径',
+      'history.window': '历史天数',
+      'history.days': '{days} 天',
       'col.session': '会话',
       'col.model': '模型',
       'col.input': '输入',
@@ -274,6 +280,8 @@ window.__ModuleLoader__.load({
 .tu-search::placeholder{color:var(--dsw-alias-label-tertiary)}
 .tu-search:focus{border-color:var(--dsw-alias-state-business-primary)}
 .tu-select{font:inherit;font-size:12px;height:30px;padding:0 8px;border-radius:var(--dsw-radius-md,8px);border:.5px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);cursor:pointer}
+.tu-select-sm{height:24px;font-size:11px;padding:0 6px}
+.tu-history-tools{display:flex;align-items:center;gap:8px;margin-left:auto}
 .tu-select:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px}
 .tu-group-row>td{padding:9px 12px;background:color-mix(in srgb, var(--dsw-alias-bg-layer-2) 60%, transparent);border-bottom:.5px solid var(--dsw-alias-border-l2)}
 .tu-group-name{font-size:12px;font-weight:600;color:var(--dsw-alias-label-primary)}
@@ -301,7 +309,7 @@ window.__ModuleLoader__.load({
 .tu-section-head{display:flex;align-items:baseline;gap:10px;margin:0 0 10px}
 .tu-section-title{margin:0;font-size:14px;line-height:20px;font-weight:600;color:var(--dsw-alias-label-primary)}
 .tu-section-sub{font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary)}
-.tu-seg{display:inline-flex;align-items:center;gap:2px;margin-left:auto;padding:2px;border-radius:999px;background:var(--dsw-alias-bg-layer-2)}
+.tu-seg{display:inline-flex;align-items:center;gap:2px;margin-left:0;padding:2px;border-radius:999px;background:var(--dsw-alias-bg-layer-2)}
 .tu-seg-btn{appearance:none;font:inherit;font-size:11px;line-height:16px;height:22px;padding:0 10px;border:none;border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;white-space:nowrap}
 .tu-seg-btn:hover{color:var(--dsw-alias-label-primary)}
 .tu-seg-btn[data-active=true]{background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-weight:600;box-shadow:0 0 0 .5px var(--dsw-alias-border-l2)}
@@ -464,6 +472,25 @@ window.__ModuleLoader__.load({
         return copied
       } catch {
         return false
+      }
+    }
+
+    /** The remembered history window, clamped to the offered set. */
+    function readHistoryDays() {
+      try {
+        const stored = Number(window.localStorage.getItem(HISTORY_STORAGE_KEY))
+        return HISTORY_WINDOWS.includes(stored) ? stored : 14
+      } catch {
+        return 14
+      }
+    }
+
+    /** Persist the chosen history window; locked storage just forgets it. */
+    function storeHistoryDays(days) {
+      try {
+        window.localStorage.setItem(HISTORY_STORAGE_KEY, String(days))
+      } catch {
+        /* Private mode and locked storage are not errors here. */
       }
     }
 
@@ -736,6 +763,7 @@ window.__ModuleLoader__.load({
       const [state, setState] = useState({ status: 'loading', data: null, error: null, fetchedAt: 0 })
       const [forced, setForced] = useState(0)
       const timer = useRef(null)
+      const etag = useRef(null)
 
       useEffect(() => {
         let cancelled = false
@@ -751,9 +779,20 @@ window.__ModuleLoader__.load({
           try {
             const response = await fetch(ENDPOINT, {
               cache: 'no-store',
-              headers: { accept: 'application/json' },
+              headers: {
+                accept: 'application/json',
+                ...(etag.current === null ? {} : { 'if-none-match': etag.current }),
+              },
             })
+            if (response.status === 304) {
+              // Unchanged since the previous poll: keep the rendered data and skip
+              // the JSON transfer and parse entirely.
+              schedule()
+              return
+            }
             if (!response.ok) throw new Error(`HTTP ${response.status}`)
+            const next = response.headers?.get?.('etag')
+            if (typeof next === 'string' && next.length > 0) etag.current = next
             const body = await response.json()
             if (body === null || typeof body !== 'object' || body.ok === false) {
               throw new Error(body?.error ?? 'request rejected')
@@ -956,7 +995,7 @@ window.__ModuleLoader__.load({
     }
 
     /** Fourteen local days of total usage. */
-    function HistoryStrip({ data, t, now }) {
+    function HistoryStrip({ data, t, now, windowDays, onDaysChange }) {
       const [metric, setMetric] = useState('cost')
       const symbol = data?.pricing?.symbol
       const byDay = useMemo(() => {
@@ -966,7 +1005,7 @@ window.__ModuleLoader__.load({
         }
         return map
       }, [data])
-      const days = useMemo(() => recentDayKeys(HISTORY_DAYS), [now])
+      const days = useMemo(() => recentDayKeys(windowDays), [now, windowDays])
       const rows = days.map(({ key, date }) => {
         const bucket = byDay.get(key)
         return {
@@ -987,8 +1026,16 @@ window.__ModuleLoader__.load({
       return h('section', { className: 'tu-section' },
         h('div', { className: 'tu-section-head' },
           h('h2', { className: 'tu-section-title' }, t('history.title')),
-          h('span', { className: 'tu-section-sub' }, t('history.subtitle', { days: HISTORY_DAYS })),
-          h('div', { className: 'tu-seg', title: t('history.metric.title'), role: 'group' },
+          h('span', { className: 'tu-section-sub' }, t('history.subtitle', { days: windowDays })),
+          h('div', { className: 'tu-history-tools' },
+            h('select', {
+              className: 'tu-select tu-select-sm',
+              value: String(windowDays),
+              'aria-label': t('history.window'),
+              title: t('history.window'),
+              onChange: (event) => onDaysChange(Number(event.target.value)),
+            }, HISTORY_WINDOWS.map((count) => h('option', { key: count, value: String(count) }, t('history.days', { days: count })))),
+            h('div', { className: 'tu-seg', title: t('history.metric.title'), role: 'group' },
             h('button', {
               type: 'button',
               className: 'tu-seg-btn',
@@ -1002,7 +1049,7 @@ window.__ModuleLoader__.load({
               'data-active': metric === 'tokens' ? 'true' : undefined,
               'aria-pressed': metric === 'tokens',
               onClick: () => setMetric('tokens'),
-            }, t('history.metric.tokens')))),
+            }, t('history.metric.tokens'))))),
         hasAny
           ? h('div', { className: 'tu-bars' }, rows.map((row) => {
             const ratio = max > 0 ? row[field] / max : 0
@@ -1267,6 +1314,7 @@ window.__ModuleLoader__.load({
       const [query, setQuery] = useState('')
       const [showZero, setShowZero] = useState(false)
       const [range, setRange] = useState('all')
+      const [historyDays, setHistoryDays] = useState(readHistoryDays)
       const [grouped, setGrouped] = useState(true)
       const [expanded, setExpanded] = useState(() => new Set())
       const [sort, setSort] = useState({ key: 'total', direction: 'desc' })
@@ -1475,7 +1523,16 @@ window.__ModuleLoader__.load({
                   windowTitle,
                   todayTitle,
                 }),
-                h(HistoryStrip, { data, t, now }),
+                h(HistoryStrip, {
+                  data,
+                  t,
+                  now,
+                  windowDays: historyDays,
+                  onDaysChange: (days) => {
+                    setHistoryDays(days)
+                    storeHistoryDays(days)
+                  },
+                }),
                 allRows.length === 0
                   ? h('div', { className: 'tu-state' }, h('div', { className: 'tu-state-title' }, t('state.empty')))
                   : h(React.Fragment, null,

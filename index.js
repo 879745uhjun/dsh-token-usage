@@ -1008,6 +1008,21 @@ export function createScanner(sessionsRoot, pricing = DEFAULT_PRICING, options =
       }
       await persistNow(true)
     },
+    /**
+     * Weak validator over every artifact's size and modification time.
+     * Unchanged logs keep the same value, so a poll can answer 304 and skip the
+     * whole payload.
+     */
+    etag() {
+      let hash = 2166136261
+      for (const [file, reader] of readers) {
+        hash ^= reader.size + Math.round(reader.mtimeMs)
+        hash = Math.imul(hash, 16777619)
+        hash ^= file.length
+        hash = Math.imul(hash, 16777619)
+      }
+      return `W/"${readers.size.toString(36)}-${(hash >>> 0).toString(36)}"`
+    },
     /** Whether at least one full pass completed. */
     get scanned() {
       return scannedOnce
@@ -1155,6 +1170,12 @@ export function apply(ctx) {
           return
         }
         await scanner.refresh().catch((error) => log('refresh failed', error))
+        const etag = scanner.etag()
+        if (request.method === 'GET' && request.headers['if-none-match'] === etag) {
+          response.writeHead(304, { etag, 'cache-control': 'no-store' })
+          response.end()
+          return
+        }
         const payload = scanner.snapshot()
         const body = JSON.stringify(payload)
         if (request.method === 'HEAD') {
@@ -1162,6 +1183,7 @@ export function apply(ctx) {
             'content-type': 'application/json; charset=utf-8',
             'content-length': Buffer.byteLength(body),
             'cache-control': 'no-store',
+            etag,
           })
           response.end()
           return
@@ -1170,6 +1192,7 @@ export function apply(ctx) {
           'content-type': 'application/json; charset=utf-8',
           'content-length': Buffer.byteLength(body),
           'cache-control': 'no-store',
+          etag,
         })
         response.end(body)
       } catch (error) {
