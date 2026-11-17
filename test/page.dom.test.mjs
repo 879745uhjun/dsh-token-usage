@@ -566,6 +566,26 @@ await waitFor(() => window.localStorage.getItem('token-usage:open-mode') === 'in
 const beforeBack = openWindows.length
 inApp.ctx.layout.selectPanel('token-usage')
 check('in-app mode no longer opens windows', openWindows.length === beforeBack)
+
+// Popup-blocked fallbacks: the desktop shell denies window.open.
+const recordingOpen = window.open
+window.open = () => null
+findModeButton().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+await waitFor(() => (inApp.container.querySelector('.tu-export-note')?.textContent ?? '').includes('不允许弹出新窗口'), 'blocked notice')
+check('blocked popup keeps in-app mode', findModeButton().getAttribute('aria-pressed') === 'false'
+  && window.localStorage.getItem('token-usage:open-mode') === 'in-app')
+window.open = recordingOpen
+
+findModeButton().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+await waitFor(() => window.localStorage.getItem('token-usage:open-mode') === 'window', 'window mode again')
+inApp.ctx.layout.selectPanel(null)
+window.open = () => null
+inApp.ctx.layout.selectPanel('token-usage')
+await waitFor(() => inApp.panels.at(-1) === 'token-usage', 'blocked keeps the panel')
+check('blocked popup leaves the page open', inApp.panels.at(-1) === 'token-usage')
+window.open = recordingOpen
+findModeButton().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+await waitFor(() => window.localStorage.getItem('token-usage:open-mode') === 'in-app', 'in-app restored')
 inAppPage.unmount()
 
 // Persistence: a fresh mount of the same browser keeps the window choice.

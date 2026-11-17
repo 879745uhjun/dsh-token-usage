@@ -29,7 +29,8 @@
   点侧栏入口会打开/聚焦一个命名窗口（同一时刻只有一个），窗口 URL 带 `?dsh-surface=token-usage`，
   插件启动时自动切到用量页；窗口里的侧栏与标题照常显示。偏好存在 `localStorage` 的
   `token-usage:open-mode`。宿主侧栏行是硬编码 `selectPanel`、没有 `onOpen` 钩子，所以拦截走公开的
-  `layout.panelInfo` 订阅：先选中再切回上一个面板，**主列会闪一下**。
+  `layout.panelInfo` 订阅：先选中再切回上一个面板，**主列会闪一下**。桌面端主窗口拒绝 `window.open`，
+  因此那里开窗失败会留在应用内并提示；独立窗口只在浏览器入口可用。
 - **按盒子归集**：分组维度可切换 **工作区 / 盒子 / 不分**。盒子数据只读自 dsh-session-boxes 的
   `/session-boxes`：父盒包含子盒成员、未分组排最后，行上显示 `父盒 / 子盒`；CSV 与 Markdown
   导出都带「盒子」列。该路由缺失、1.5 秒超时或返回异常时自动退回按工作区分组。

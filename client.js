@@ -67,6 +67,7 @@ window.__ModuleLoader__.load({
       'page.grouping': 'Group by',
       'openMode.label': 'Standalone window',
       'openMode.title': 'Open the usage page in its own window; sidebar clicks open it too',
+      'openMode.blocked': 'Popups are blocked here (the desktop shell denies them); staying in-app',
       'group.workspace': 'Workspace',
       'group.box': 'Box',
       'group.none': 'None',
@@ -198,6 +199,7 @@ window.__ModuleLoader__.load({
       'page.grouping': '分组方式',
       'openMode.label': '独立窗口',
       'openMode.title': '在独立窗口打开用量页；侧栏点击也会打开新窗口',
+      'openMode.blocked': '这里不允许弹出新窗口（桌面端会拦截），已保持应用内打开',
       'group.workspace': '工作区',
       'group.box': '盒子',
       'group.none': '不分',
@@ -732,6 +734,7 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
         } catch {
           /* Focus can be refused; the window is still open. */
         }
+        if (opened.closed === true) return null
       }
       return opened
     }
@@ -1952,9 +1955,19 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
               title: t('openMode.title'),
               onClick: () => {
                 const next = openMode === 'window' ? 'in-app' : 'window'
+                if (next === 'window') {
+                  const opened = openUsageWindow()
+                  if (opened === null) {
+                    // Popups are denied in the desktop shell; keep the page usable
+                    // and say so instead of leaving a mode that cannot work.
+                    storeOpenMode('in-app')
+                    setOpenMode('in-app')
+                    flash(t('openMode.blocked'), 'error')
+                    return
+                  }
+                }
                 setOpenMode(next)
                 storeOpenMode(next)
-                if (next === 'window') openUsageWindow()
               },
             }, t('openMode.label')),
             h('button', {
@@ -2167,7 +2180,8 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
         // becomes active we open the standalone window and restore the previous
         // panel. The main column may paint once before it is restored.
         ctx.effect(() => {
-          const info = ctx.layout.panelInfo
+          const info = ctx.layout?.panelInfo
+          if (info === undefined || typeof info.subscribe !== 'function') return undefined
           let previous = info.getSnapshot().activePanelId === PANEL_ID ? null : info.getSnapshot().activePanelId
           return info.subscribe(() => {
             const active = info.getSnapshot().activePanelId
@@ -2180,7 +2194,10 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
               return
             }
             // Reuse the named window: the browser focuses the existing one.
-            openUsageWindow()
+            // A denied popup (the desktop shell blocks them) must leave the
+            // page open rather than restoring the previous panel.
+            const opened = openUsageWindow()
+            if (opened === null) return
             try {
               ctx.layout.selectPanel(previous)
             } catch {
