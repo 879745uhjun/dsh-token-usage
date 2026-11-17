@@ -296,6 +296,8 @@ window.__ModuleLoader__.load({
      * ------------------------------------------------------------------ */
 
     const CSS = `
+:root{--dshc-blue:#0969DA;--dshc-green:#1A7F37;--dshc-amber:#9A6700;--dshc-red:#CF222E;--dshc-purple:#8250DF;--dshc-cyan:#1B7C83;--dshc-pink:#BF3989;--dshc-gray:#6E7781}
+body[data-ds-dark-theme]{--dshc-blue:#4C8DFF;--dshc-green:#3FB950;--dshc-amber:#D29922;--dshc-red:#F85149;--dshc-purple:#A371F7;--dshc-cyan:#39C5CF;--dshc-pink:#DB61A2;--dshc-gray:#8B949E}
 .tu{box-sizing:border-box;height:100%;min-height:0;display:flex;flex-direction:column;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-size:13px;line-height:20px;padding-top:var(--dsh-frame-top-clearance,0px)}
 .tu *,.tu *:before,.tu *:after{box-sizing:border-box}
 .tu-head{flex:none;display:flex;align-items:flex-start;gap:16px;padding:18px 28px 12px}
@@ -362,8 +364,10 @@ window.__ModuleLoader__.load({
 .tu-chart-legend .tu-legend-value{font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-primary)}
 .tu-bar-track[data-split=true]{flex-direction:column-reverse;align-items:stretch}
 .tu-bar-seg{display:block;width:100%}
-.tu-bar-seg[data-kind=valley]{background:#4C8DFF}
-.tu-bar-seg[data-kind=peak]{background:#D29922}
+.tu-bar-seg[data-kind=valley]{background:var(--dshc-blue)}
+.tu-bar-seg[data-kind=peak]{background:var(--dshc-amber)}
+body[data-ds-dark-theme] .tu-bar-seg[data-kind=peak]{opacity:.92}
+body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
 .tu-now-badge{display:inline-flex;align-items:center;height:18px;padding:0 7px;border-radius:999px;font-size:10px;line-height:16px;color:var(--dsw-alias-state-success-primary);background:color-mix(in srgb, var(--dsw-alias-state-success-primary) 14%, transparent)}
 .tu-now-badge[data-peak=true]{color:var(--dsw-alias-state-warn-primary);background:color-mix(in srgb, var(--dsw-alias-state-warn-primary) 16%, transparent)}
 .tu-line svg{display:block;width:100%;height:auto;flex:1;min-height:0}
@@ -1066,7 +1070,7 @@ window.__ModuleLoader__.load({
     const CHART_TYPES = ['bars', 'line', 'pie']
     const CHART_STORAGE_KEY = 'token-usage.chart'
     /** Off-peak and peak colors shared by every split chart. */
-    const PEAK_COLORS = { valley: '#4C8DFF', peak: '#D29922' }
+    const PEAK_COLORS = { valley: 'var(--dshc-blue)', peak: 'var(--dshc-amber)' }
 
     /** The remembered chart form, or bars when nothing valid is stored. */
     function readChartType() {
@@ -1158,13 +1162,13 @@ window.__ModuleLoader__.load({
         h('svg', { viewBox: '0 0 100 100', preserveAspectRatio: 'none', role: 'img', 'aria-label': t('history.chart.line') },
           h('defs', null,
             h('linearGradient', { id: 'tu-line-fill', x1: '0', y1: '0', x2: '0', y2: '1' },
-              h('stop', { offset: '0%', stopColor: PEAK_COLORS.valley, stopOpacity: '0.30' }),
-              h('stop', { offset: '100%', stopColor: PEAK_COLORS.valley, stopOpacity: '0' }))),
+              h('stop', { offset: '0%', style: { stopColor: PEAK_COLORS.valley, stopOpacity: '0.30' } }),
+              h('stop', { offset: '100%', style: { stopColor: PEAK_COLORS.valley, stopOpacity: '0' } }))),
           h('polygon', { points: area, fill: 'url(#tu-line-fill)' }),
           h('polyline', {
             points: line,
             fill: 'none',
-            stroke: split ? PEAK_COLORS.valley : 'var(--dsw-alias-state-business-primary)',
+            style: { stroke: split ? PEAK_COLORS.valley : 'var(--dsw-alias-state-business-primary)' },
             strokeWidth: 2,
             vectorEffect: 'non-scaling-stroke',
             strokeLinejoin: 'round',
@@ -1175,7 +1179,7 @@ window.__ModuleLoader__.load({
             : h('polyline', {
               points: peakPoints.join(' '),
               fill: 'none',
-              stroke: PEAK_COLORS.peak,
+              style: { stroke: PEAK_COLORS.peak },
               strokeWidth: 2,
               strokeDasharray: '4 3',
               vectorEffect: 'non-scaling-stroke',
@@ -1187,10 +1191,10 @@ window.__ModuleLoader__.load({
               cx: x(index),
               cy: y(split ? row.costValley : row[field]),
               r: 1.3,
-              fill: split ? PEAK_COLORS.valley : 'var(--dsw-alias-state-business-primary)',
+              style: { fill: split ? PEAK_COLORS.valley : 'var(--dsw-alias-state-business-primary)' },
             }),
             split
-              ? h('circle', { cx: x(index), cy: y(row.costPeak), r: 1.1, fill: PEAK_COLORS.peak })
+              ? h('circle', { cx: x(index), cy: y(row.costPeak), r: 1.1, style: { fill: PEAK_COLORS.peak } })
               : null,
             h('title', null, split
               ? `${row.key} · ${t('history.split.valley', { value: formatMoney(row.costValley, symbol) })} · ${t('history.split.peak', { value: formatMoney(row.costPeak, symbol) })}`
@@ -1207,7 +1211,7 @@ window.__ModuleLoader__.load({
       const split = metric === 'cost'
       const colors = split
         ? [PEAK_COLORS.valley, PEAK_COLORS.peak]
-        : ['#4C8DFF', '#3FB950', '#D29922', '#F85149', '#A371F7', '#39C5CF', '#DB61A2', '#8B949E']
+        : ['var(--dshc-blue)', 'var(--dshc-green)', 'var(--dshc-amber)', 'var(--dshc-red)', 'var(--dshc-purple)', 'var(--dshc-cyan)', 'var(--dshc-pink)', 'var(--dshc-gray)']
       let slices
       if (split) {
         const valley = rows.reduce((sum, row) => sum + (Number(row.costValley) || 0), 0)
@@ -1228,7 +1232,7 @@ window.__ModuleLoader__.load({
       const format = (value) => (metric === 'cost' ? formatMoney(value, symbol) : formatTokens(value))
       return h('div', { className: 'tu-chart tu-pie' },
         h('svg', { viewBox: '0 0 100 100', role: 'img', 'aria-label': t('history.chart.pie') },
-          h('circle', { cx: 50, cy: 50, r: 40, fill: 'none', stroke: 'var(--dsw-alias-bg-layer-2)', strokeWidth: 18 }),
+          h('circle', { cx: 50, cy: 50, r: 40, fill: 'none', style: { stroke: 'var(--dsw-alias-bg-layer-2)' }, strokeWidth: 18 }),
           slices.map((slice, index) => {
             const length = total > 0 ? (slice.value / total) * circumference : 0
             const share = total > 0 ? Math.round((slice.value / total) * 100) : 0
@@ -1238,7 +1242,7 @@ window.__ModuleLoader__.load({
               cy: 50,
               r: 40,
               fill: 'none',
-              stroke: colors[index % colors.length],
+              style: { stroke: colors[index % colors.length] },
               strokeWidth: 18,
               strokeDasharray: `${length.toFixed(2)} ${(circumference - length).toFixed(2)}`,
               strokeDashoffset: (-offset).toFixed(2),

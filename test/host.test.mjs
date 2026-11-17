@@ -450,6 +450,35 @@ test('foldEvent splits spend into peak and valley windows', () => {
   assert.equal(Math.round(state.days.get('2026-11-14').costValley * 1e6) / 1e6, 1)
 })
 
+test('client palette ships paired light and dark data colors', () => {
+  const source = readFileSync(new URL('../client.js', import.meta.url), 'utf8')
+  const names = ['blue', 'green', 'amber', 'red', 'purple', 'cyan', 'pink', 'gray']
+  const paletteOf = (selector) => {
+    const start = source.indexOf(`${selector}{--dshc-`)
+    assert.notEqual(start, -1, `${selector} palette is present`)
+    const block = source.slice(start, source.indexOf('}', start))
+    const colors = {}
+    for (const match of block.matchAll(/--dshc-([a-z]+):(#[0-9A-Fa-f]{6})/g)) colors[match[1]] = match[2].toUpperCase()
+    return colors
+  }
+  const light = paletteOf(':root')
+  const dark = paletteOf('body[data-ds-dark-theme]')
+  assert.deepEqual(Object.keys(light).sort(), [...names].sort())
+  assert.deepEqual(Object.keys(dark).sort(), [...names].sort())
+  assert.equal(new Set(Object.values(light)).size, names.length, 'light colors are pairwise distinct')
+  assert.equal(new Set(Object.values(dark)).size, names.length, 'dark colors are pairwise distinct')
+  for (const name of names) assert.notEqual(light[name], dark[name], `${name} differs between themes`)
+
+  const stripped = source.replace(/--dshc-[a-z]+:#[0-9A-Fa-f]{6}/g, '')
+  assert.equal(/(?:^|[^&\w])#[0-9A-Fa-f]{3,8}\b/.test(stripped), false, 'no hex color outside the palette')
+})
+
+test('client paints data colors through CSS variables, never hex', () => {
+  const source = readFileSync(new URL('../client.js', import.meta.url), 'utf8')
+  assert.match(source, /--dshc-blue/)
+  assert.equal(/#4C8DFF|#D29922|#0969DA|#9A6700/.test(source.replace(/--dshc-[a-z]+:#[0-9A-Fa-f]{6}/g, '')), false)
+})
+
 test('nextSwitchAt finds the next Beijing pricing boundary', () => {
   // Friday 10:30 Beijing: peak ends at 12:00.
   const peakEnd = Date.parse('2026-11-13T02:30:00Z')

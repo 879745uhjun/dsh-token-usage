@@ -98,6 +98,10 @@ read-only JSON route. Artifacts are decoded frame by frame, so a poll only reads
 what the Host appended since the previous one; restarts, truncation, and a
 half-written final frame each have their own handling.
 
+Data colors come from the `--dshc-*` palette: `:root` carries the light set and
+`body[data-ds-dark-theme]` overrides it with the dark one, so charts and the
+peak/off-peak split never hardcode a hex value.
+
 - **What it does not do.** The estimate prices uncached, cache-write, and cache-read
   prompt tokens from usage the provider reported; it does not read account
   balances, and it does not know a provider's private rates unless you override
