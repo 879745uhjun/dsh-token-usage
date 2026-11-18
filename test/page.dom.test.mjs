@@ -406,6 +406,9 @@ check('spend bars split peak and valley', build.container.querySelectorAll('.tu-
   String(build.container.querySelectorAll('.tu-bar-seg').length))
 check('split legend names both windows', (build.container.querySelector('.tu-chart-legend')?.textContent ?? '').includes('谷时')
   && (build.container.querySelector('.tu-chart-legend')?.textContent ?? '').includes('峰时'))
+const barLabels = Array.from(build.container.querySelectorAll('.tu-bar-value')).map((node) => node.textContent)
+check('bar labels stay compact', barLabels.filter(Boolean).every((text) => /^¥\d+(\.\d{1,2})?$/.test(text)),
+  barLabels.filter(Boolean).slice(0, 3).join(','))
 
 chartButtons()[1].dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
 await waitFor(() => build.container.querySelector('.tu-line') !== null, 'line chart')

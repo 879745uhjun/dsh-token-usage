@@ -420,9 +420,9 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
 .tu-legend-label{color:var(--dsw-alias-label-secondary)}
 .tu-legend-value{font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-primary)}
 .tu-legend-pct{font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-tertiary);min-width:34px;text-align:right}
-.tu-bar-col{flex:1 1 0;min-width:34px;display:flex;flex-direction:column;align-items:center;gap:4px}
+.tu-bar-col{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px}
 .tu-bar-value{font-size:10px;line-height:14px;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums;white-space:nowrap}
-.tu-bar-track{width:100%;max-width:38px;height:56px;border-radius:4px;background:var(--dsw-alias-bg-layer-2);display:flex;align-items:flex-end;overflow:hidden}
+.tu-bar-track{width:100%;max-width:72px;height:56px;border-radius:4px;background:var(--dsw-alias-bg-layer-2);display:flex;align-items:flex-end;overflow:hidden}
 .tu-bar-fill{display:block;width:100%;border-radius:4px 4px 0 0;background:var(--dsw-alias-state-business-primary);opacity:.75;min-height:2px}
 .tu-bar-col[data-today=true] .tu-bar-fill{opacity:1}
 .tu-bar-col[data-today=true] .tu-bar-day{color:var(--dsw-alias-label-secondary);font-weight:600}
@@ -1239,6 +1239,17 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
       return metric === 'cost' ? formatMoney(row.cost, symbol) : formatTokens(row.total)
     }
 
+    /** Short label above a bar: at most one decimal, blank for empty days. */
+    function barValueLabel(row, field, metric, symbol) {
+      const value = Number(row[field]) || 0
+      if (value <= 0) return ''
+      if (metric !== 'cost') return formatTokens(value)
+      const unit = typeof symbol === 'string' && symbol.length > 0 ? symbol : '¥'
+      if (value >= 100) return `${unit}${Math.round(value)}`
+      if (value >= 10) return `${unit}${value.toFixed(1)}`
+      return `${unit}${value.toFixed(2)}`
+    }
+
     /** Peak/off-peak legend: same rows, same order, same columns for every chart. */
     function HistoryLegend({ rows, symbol, t }) {
       const valley = rows.reduce((sum, row) => sum + (Number(row.costValley) || 0), 0)
@@ -1276,7 +1287,7 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
             'data-today': row.key === todayKey ? 'true' : undefined,
             title,
           },
-          h('span', { className: 'tu-bar-value' }, historyValue(row, field, metric, symbol)),
+          h('span', { className: 'tu-bar-value' }, barValueLabel(row, field, metric, symbol)),
           h('span', { className: 'tu-bar-track', 'data-split': split ? 'true' : undefined },
             split
               ? h(React.Fragment, null,

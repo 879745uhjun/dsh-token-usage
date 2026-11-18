@@ -479,6 +479,12 @@ test('client paints data colors through CSS variables, never hex', () => {
   assert.equal(/#4C8DFF|#D29922|#0969DA|#9A6700/.test(source.replace(/--dshc-[a-z]+:#[0-9A-Fa-f]{6}/g, '')), false)
 })
 
+test('bar columns can shrink so long windows never clip a day', () => {
+  const source = readFileSync(new URL('../client.js', import.meta.url), 'utf8')
+  assert.match(source, /\.tu-bar-col\{[^}]*min-width:0/)
+  assert.match(source, /\.tu-bar-track\{[^}]*max-width:72px/)
+})
+
 test('client no longer carries the removed standalone-window symbols', () => {
   const source = readFileSync(new URL('../client.js', import.meta.url), 'utf8')
   for (const symbol of ['dsh-surface', 'open-mode', 'window.open', 'openUsageWindow', 'panelInfo']) {
