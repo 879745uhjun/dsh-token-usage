@@ -28,12 +28,6 @@ window.__ModuleLoader__.load({
     /** Read-only session-box route owned by dsh-session-boxes. */
     const BOXES_ENDPOINT = '/session-boxes'
     const BOXES_TIMEOUT_MS = 1500
-    /** Remembered presentation choice: `in-app` (main column) or `window`. */
-    const OPEN_MODE_KEY = 'token-usage:open-mode'
-    /** Named window so repeated opens reuse one standalone window. */
-    const OPEN_WINDOW_NAME = 'dsh-token-usage'
-    const SURFACE_PARAM = 'dsh-surface'
-    const SURFACE_VALUE = 'token-usage'
     const POLL_MS = 2000
     /** Selectable history windows, remembered per browser. */
     const HISTORY_WINDOWS = [7, 14, 30]
@@ -65,9 +59,6 @@ window.__ModuleLoader__.load({
       'page.range': 'Time range',
       'page.group': 'Group by workspace',
       'page.grouping': 'Group by',
-      'openMode.label': 'Standalone window',
-      'openMode.title': 'Open the usage page in its own window; sidebar clicks open it too',
-      'openMode.blocked': 'Popups are blocked here (the desktop shell denies them); staying in-app',
       'group.workspace': 'Workspace',
       'group.box': 'Box',
       'group.none': 'None',
@@ -201,9 +192,6 @@ window.__ModuleLoader__.load({
       'page.range': '时间范围',
       'page.group': '按工作区分组',
       'page.grouping': '分组方式',
-      'openMode.label': '独立窗口',
-      'openMode.title': '在独立窗口打开用量页；侧栏点击也会打开新窗口',
-      'openMode.blocked': '这里不允许弹出新窗口（桌面端会拦截），已保持应用内打开',
       'group.workspace': '工作区',
       'group.box': '盒子',
       'group.none': '不分',
@@ -714,50 +702,6 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
         groups.sort((left, right) => groupTotals(right.rows).cost - groupTotals(left.rows).cost || String(left.name).localeCompare(String(right.name)))
       }
       return groups
-    }
-
-    /** The remembered presentation choice. */
-    function readOpenMode() {
-      try {
-        return window.localStorage.getItem(OPEN_MODE_KEY) === 'window' ? 'window' : 'in-app'
-      } catch {
-        return 'in-app'
-      }
-    }
-
-    /** Persist the presentation choice; locked storage keeps the default. */
-    function storeOpenMode(mode) {
-      try {
-        window.localStorage.setItem(OPEN_MODE_KEY, mode)
-      } catch {
-        /* Private mode and locked storage are not errors here. */
-      }
-    }
-
-    /** Open (or refocus) the standalone usage window. */
-    function openUsageWindow() {
-      let url
-      try {
-        url = new URL(window.location.href)
-        url.searchParams.set(SURFACE_PARAM, SURFACE_VALUE)
-      } catch {
-        return null
-      }
-      let opened = null
-      try {
-        opened = window.open(url.toString(), OPEN_WINDOW_NAME)
-      } catch {
-        return null
-      }
-      if (opened !== null) {
-        try {
-          opened.focus()
-        } catch {
-          /* Focus can be refused; the window is still open. */
-        }
-        if (opened.closed === true) return null
-      }
-      return opened
     }
 
     /** One session per row, with raw numbers a spreadsheet can sum. */
@@ -1822,7 +1766,6 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
       const [historyDays, setHistoryDays] = useState(readHistoryDays)
       const [grouping, setGrouping] = useState('workspace')
       const [boxInfo, setBoxInfo] = useState(null)
-      const [openMode, setOpenMode] = useState(readOpenMode)
       const [expanded, setExpanded] = useState(() => new Set())
       const [detail, setDetail] = useState(() => new Set())
       const [sort, setSort] = useState({ key: 'total', direction: 'desc' })
@@ -2036,29 +1979,6 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
             h('button', {
               type: 'button',
               className: 'tu-btn',
-              'data-active': openMode === 'window' ? 'true' : undefined,
-              'aria-pressed': openMode === 'window',
-              title: t('openMode.title'),
-              onClick: () => {
-                const next = openMode === 'window' ? 'in-app' : 'window'
-                if (next === 'window') {
-                  const opened = openUsageWindow()
-                  if (opened === null) {
-                    // Popups are denied in the desktop shell; keep the page usable
-                    // and say so instead of leaving a mode that cannot work.
-                    storeOpenMode('in-app')
-                    setOpenMode('in-app')
-                    flash(t('openMode.blocked'), 'error')
-                    return
-                  }
-                }
-                setOpenMode(next)
-                storeOpenMode(next)
-              },
-            }, t('openMode.label')),
-            h('button', {
-              type: 'button',
-              className: 'tu-btn',
               'data-active': live ? 'true' : undefined,
               'aria-pressed': live,
               title: live ? t('page.liveOn') : t('page.liveOff'),
@@ -2240,60 +2160,6 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
           label: () => t('panel'),
           locale: NS,
         }, PanelIcon))
-
-        // A window opened for this page carries the surface parameter; select
-        // the panel once it is registered (the slot injects asynchronously).
-        ctx.effect(() => {
-          let params
-          try {
-            params = new URLSearchParams(window.location.search)
-          } catch {
-            return undefined
-          }
-          if (params.get(SURFACE_PARAM) !== SURFACE_VALUE) return undefined
-          let attempts = 0
-          let timer = window.setTimeout(function select() {
-            try {
-              ctx.layout.selectPanel(PANEL_ID)
-            } catch {
-              if (attempts >= 50) return
-              attempts += 1
-              timer = window.setTimeout(select, 100)
-            }
-          }, 0)
-          return () => window.clearTimeout(timer)
-        }, 'token-usage: surface selection')
-
-        // Window mode. The host sidebar row calls `selectPanel` directly, so the
-        // only supported hook is the layout selection itself: when our panel
-        // becomes active we open the standalone window and restore the previous
-        // panel. The main column may paint once before it is restored.
-        ctx.effect(() => {
-          const info = ctx.layout?.panelInfo
-          if (info === undefined || typeof info.subscribe !== 'function') return undefined
-          let previous = info.getSnapshot().activePanelId === PANEL_ID ? null : info.getSnapshot().activePanelId
-          return info.subscribe(() => {
-            const active = info.getSnapshot().activePanelId
-            if (active !== PANEL_ID) {
-              previous = active
-              return
-            }
-            if (readOpenMode() !== 'window') {
-              previous = null
-              return
-            }
-            // Reuse the named window: the browser focuses the existing one.
-            // A denied popup (the desktop shell blocks them) must leave the
-            // page open rather than restoring the previous panel.
-            const opened = openUsageWindow()
-            if (opened === null) return
-            try {
-              ctx.layout.selectPanel(previous)
-            } catch {
-              /* Keeping the page is better than losing the selection. */
-            }
-          })
-        }, 'token-usage: window mode')
       },
     }
   },

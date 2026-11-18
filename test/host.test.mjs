@@ -479,6 +479,13 @@ test('client paints data colors through CSS variables, never hex', () => {
   assert.equal(/#4C8DFF|#D29922|#0969DA|#9A6700/.test(source.replace(/--dshc-[a-z]+:#[0-9A-Fa-f]{6}/g, '')), false)
 })
 
+test('client no longer carries the removed standalone-window symbols', () => {
+  const source = readFileSync(new URL('../client.js', import.meta.url), 'utf8')
+  for (const symbol of ['dsh-surface', 'open-mode', 'window.open', 'openUsageWindow', 'panelInfo']) {
+    assert.equal(source.includes(symbol), false, `${symbol} must be gone`)
+  }
+})
+
 test('nextSwitchAt finds the next Beijing pricing boundary', () => {
   // Friday 10:30 Beijing: peak ends at 12:00.
   const peakEnd = Date.parse('2026-11-13T02:30:00Z')

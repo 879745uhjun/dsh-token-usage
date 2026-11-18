@@ -41,15 +41,6 @@ dedicated page.
   two-tone stacked bars, or a two-slice donut. The header shows a
   **“Off-peak · 1h 30m left”** badge naming the window in force and the time until
   the next switch.
-- **Standalone window.** The header's **Standalone window** toggle picks the
-  presentation: `in-app` (default, the panel opens in the main column) or
-  `window`, which opens or focuses one named window (`dsh-token-usage`) whose URL
-  carries `?dsh-surface=token-usage`; the plugin selects the usage page on boot and
-  the window keeps its sidebar and title. The choice lives in `localStorage`
-  (`token-usage:open-mode`). The host's sidebar row calls `selectPanel` directly
-  and exposes no `onOpen` hook, so interception is done through the public
-  `layout.panelInfo` subscription: select, open, then restore the previous panel —
-  **the main column may flash once**.
 - **Inline daily detail.** The `▸` at the left of a session row expands that
   session's per-day bars for the selected range (spend when priced, tokens
   otherwise) with a `N days · tokens · spend` total; expanding never opens the

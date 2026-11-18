@@ -3,6 +3,14 @@
 本文件记录 dsh-token-usage 的每次可见变化。版本号遵循语义化版本；此前的开发都在本地工作区进行，
 本仓库从 1.2.0 起有可追溯的提交历史。
 
+## 1.8.0 — 2026-11-18
+
+### Removed
+
+- 移除「独立窗口」呈现方式：头部开关、`token-usage:open-mode` 偏好、`?dsh-surface=token-usage` 启动选页、以及基于 `layout.panelInfo` 的侧栏点击拦截全部删除。
+- 原因：桌面端 Electron 主进程 `setWindowOpenHandler` 拒绝弹窗，`window.open` 恒为 null；浏览器入口的收益不足以维护双模式。将来 DSH 本体放行同源弹窗再做不迟。
+- 测试同步删除 window 模式用例；新增静态断言，防止 `dsh-surface` / `open-mode` / `window.open` / `panelInfo` 回潮。
+
 ## 1.7.0 — 2026-11-18
 
 会话行可展开每日明细。
