@@ -363,6 +363,18 @@ page.rows().find((row) => row.textContent.includes('Beta') && !row.classList.con
 await waitFor(() => page.rows().length === 3, 'child row collapsed')
 check('chip collapses the sub-session', page.rows().length === 3)
 
+// Per-session daily detail: the chevron expands a day strip without opening.
+const detailToggle = page.rows()[0].querySelector('.tu-row-toggle')
+check('row detail toggle renders', detailToggle !== null)
+detailToggle.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+await waitFor(() => build.container.querySelectorAll('tr.tu-detail-row').length === 1, 'detail row')
+check('row detail expands daily bars', build.container.querySelectorAll('.tu-detail-day').length >= 1,
+  String(build.container.querySelectorAll('.tu-detail-day').length))
+check('row detail does not open the session', build.opened.length === 0)
+detailToggle.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+await waitFor(() => build.container.querySelectorAll('tr.tu-detail-row').length === 0, 'detail collapsed')
+check('row detail collapses again', build.container.querySelectorAll('tr.tu-detail-row').length === 0)
+
 // Flat list: the grouping dimension offers workspace and none without boxes.
 const groupButtons = Array.from(build.container.querySelectorAll('.tu-toolbar-toggles .tu-seg .tu-seg-btn'))
 check('grouping offers workspace and none without boxes', groupButtons.length === 2, String(groupButtons.length))

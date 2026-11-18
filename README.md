@@ -50,6 +50,10 @@ dedicated page.
   and exposes no `onOpen` hook, so interception is done through the public
   `layout.panelInfo` subscription: select, open, then restore the previous panel —
   **the main column may flash once**.
+- **Inline daily detail.** The `▸` at the left of a session row expands that
+  session's per-day bars for the selected range (spend when priced, tokens
+  otherwise) with a `N days · tokens · spend` total; expanding never opens the
+  session.
 - **Box aggregation.** The grouping switch offers **workspace / box / none**. Box
   data is read-only from dsh-session-boxes' `/session-boxes`: a parent box contains
   its child boxes' sessions, ungrouped sessions come last, rows carry a

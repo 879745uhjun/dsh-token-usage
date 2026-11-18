@@ -95,6 +95,10 @@ window.__ModuleLoader__.load({
       'range.all': 'All time',
       'group.meta': '{count} sessions · {total} tokens · {cost}',
       'row.child': 'sub-session',
+      'detail.show': 'Show daily detail',
+      'detail.hide': 'Hide daily detail',
+      'detail.empty': 'No usage in this range',
+      'detail.summary': '{days} days · {tokens} tokens · {cost}',
       'row.children': '{count} sub-sessions · {cost}',
       'row.children.title': 'Expand or collapse sub-sessions',
       'page.updated': 'Updated {time}',
@@ -227,6 +231,10 @@ window.__ModuleLoader__.load({
       'range.all': '全部时间',
       'group.meta': '{count} 个会话 · {total} tokens · {cost}',
       'row.child': '子会话',
+      'detail.show': '展开每日明细',
+      'detail.hide': '收起每日明细',
+      'detail.empty': '该时间范围内没有记录',
+      'detail.summary': '{days} 天 · {tokens} tokens · {cost}',
       'row.children': '{count} 个子会话 · {cost}',
       'row.children.title': '展开或收起子会话',
       'page.updated': '更新于 {time}',
@@ -352,6 +360,19 @@ body[data-ds-dark-theme]{--dshc-blue:#4C8DFF;--dshc-green:#3FB950;--dshc-amber:#
 .tu-chip[data-open=true]{border-color:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-state-business-primary)}
 .tu-chip-muted{border-color:transparent;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-tertiary);cursor:default}
 .tu-row-child{background:color-mix(in srgb, var(--dsw-alias-bg-layer-2) 24%, transparent)}
+.tu-row-toggle{appearance:none;border:none;background:transparent;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px;padding:0 2px;cursor:pointer;flex:none}
+.tu-row-toggle:hover{color:var(--dsw-alias-label-primary)}
+.tu-row-toggle:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px;border-radius:3px}
+.tu-detail-row>td{padding:0;background:color-mix(in srgb, var(--dsw-alias-bg-layer-2) 35%, transparent);border-bottom:.5px solid var(--dsw-alias-border-l1)}
+.tu-detail{padding:10px 14px 12px}
+.tu-detail-meta{font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary);margin-bottom:8px}
+.tu-detail-bars{display:flex;align-items:flex-end;gap:6px;overflow-x:auto}
+.tu-detail-day{flex:1 1 0;min-width:34px;display:flex;flex-direction:column;align-items:center;gap:3px}
+.tu-detail-value{font-size:10px;line-height:14px;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums;white-space:nowrap}
+.tu-detail-track{width:100%;max-width:38px;height:42px;border-radius:4px;background:var(--dsw-alias-bg-layer-2);display:flex;align-items:flex-end;overflow:hidden}
+.tu-detail-fill{display:block;width:100%;border-radius:4px 4px 0 0;background:var(--dsw-alias-state-business-primary);opacity:.85}
+.tu-detail-label{font-size:10px;line-height:14px;color:var(--dsw-alias-label-tertiary)}
+.tu-detail-empty{font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary);padding:8px 2px}
 .tu-row-child .tu-td-session{padding-left:26px}
 .tu-row-child .tu-title-text{font-weight:400;color:var(--dsw-alias-label-secondary)}
 .tu-scroll{flex:1;min-height:0;overflow:auto;padding:0 28px 36px;overscroll-behavior:contain}
@@ -1552,7 +1573,37 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
     }
 
     /** One Session row. */
-    function SessionRow({ row, now, onOpen, t, peak, symbol, depth = 0, childCount = 0, childCost = 0, expanded = false, onToggleChildren }) {
+    /** Per-day strip for one expanded session row. */
+    function SessionDayStrip({ row, startKey, symbol, t }) {
+      const days = (Array.isArray(row.days) ? row.days : [])
+        .filter((day) => typeof day?.day === 'string' && (startKey === null || day.day >= startKey))
+        .sort((left, right) => left.day.localeCompare(right.day))
+      if (days.length === 0) return h('div', { className: 'tu-detail-empty' }, t('detail.empty'))
+      const totalCost = days.reduce((sum, day) => sum + (Number(day.cost) || 0), 0)
+      const totalTokens = days.reduce((sum, day) => sum + (Number(day.total) || 0), 0)
+      const useCost = totalCost > 0
+      const max = days.reduce((peak, day) => Math.max(peak, useCost ? Number(day.cost) || 0 : Number(day.total) || 0), 0)
+      return h('div', { className: 'tu-detail' },
+        h('div', { className: 'tu-detail-meta' }, t('detail.summary', {
+          days: days.length,
+          tokens: formatTokens(totalTokens),
+          cost: formatMoney(totalCost, symbol),
+        })),
+        h('div', { className: 'tu-detail-bars' }, days.map((day) => {
+          const value = useCost ? Number(day.cost) || 0 : Number(day.total) || 0
+          return h('div', {
+            key: day.day,
+            className: 'tu-detail-day',
+            title: `${day.day} · ${formatExact(day.total)} tokens · ${formatMoney(day.cost, symbol)}`,
+          },
+          h('span', { className: 'tu-detail-value' }, useCost ? formatMoney(day.cost, symbol) : formatTokens(day.total)),
+          h('span', { className: 'tu-detail-track' },
+            h('i', { className: 'tu-detail-fill', style: { height: `${max > 0 ? Math.max(4, Math.round((value / max) * 100)) : 4}%` } })),
+          h('span', { className: 'tu-detail-label' }, day.day.slice(5)))
+        })))
+    }
+
+    function SessionRow({ row, now, onOpen, t, peak, symbol, depth = 0, childCount = 0, childCost = 0, expanded = false, onToggleChildren, detailOpen = false, onToggleDetail }) {
       const total = Number(row.total) || 0
       const prompt = (Number(row.input) || 0) + (Number(row.cacheRead) || 0) + (Number(row.cacheWrite) || 0)
       const ratio = peak > 0 ? total / peak : 0
@@ -1573,6 +1624,17 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
       },
       h('td', { className: 'tu-td tu-td-session' },
         h('div', { className: 'tu-title-line' },
+          h('button', {
+            type: 'button',
+            className: 'tu-row-toggle',
+            'aria-expanded': detailOpen,
+            'aria-label': detailOpen ? t('detail.hide') : t('detail.show'),
+            title: detailOpen ? t('detail.hide') : t('detail.show'),
+            onClick: (event) => {
+              event.stopPropagation()
+              if (typeof onToggleDetail === 'function') onToggleDetail(row.sessionId)
+            },
+          }, detailOpen ? '▾' : '▸'),
           row.live === true ? h('span', { className: 'tu-dot', title: t('row.live') }) : null,
           depth > 0 ? h('span', { className: 'tu-chip tu-chip-muted' }, t('row.child')) : null,
           h('span', { className: 'tu-title-text' }, row.displayTitle),
@@ -1619,7 +1681,7 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
     }
 
     /** The sortable Session table. */
-    function SessionTable({ rows, groups, hiddenCount, sort, onSort, now, onOpen, t, symbol, expanded, onToggleChildren }) {
+    function SessionTable({ rows, groups, hiddenCount, sort, onSort, now, onOpen, t, symbol, expanded, onToggleChildren, detailOpen, onToggleDetail, startKey }) {
       const peak = rows.reduce((value, row) => Math.max(value, Number(row.total) || 0), 0)
 
       /** One group's rows, with sub-sessions nested under their parent. */
@@ -1640,6 +1702,7 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
         for (const row of tops) {
           const children = nested.get(row.sessionId) ?? []
           const open = expanded instanceof Set ? expanded.has(row.sessionId) : false
+          const showDetail = detailOpen instanceof Set ? detailOpen.has(row.sessionId) : false
           output.push(h(SessionRow, {
             key: row.sessionId,
             row,
@@ -1653,9 +1716,16 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
             childCost: children.reduce((sum, child) => sum + (Number(child.cost) || 0), 0),
             expanded: open,
             onToggleChildren: children.length > 0 ? () => onToggleChildren(row.sessionId) : undefined,
+            detailOpen: showDetail,
+            onToggleDetail,
           }))
+          if (showDetail) {
+            output.push(h('tr', { key: `${row.sessionId}:detail`, className: 'tu-detail-row' },
+              h('td', { colSpan: 10 }, h(SessionDayStrip, { row, startKey, symbol, t }))))
+          }
           if (open) {
             for (const child of children) {
+              const childDetail = detailOpen instanceof Set ? detailOpen.has(child.sessionId) : false
               output.push(h(SessionRow, {
                 key: child.sessionId,
                 row: child,
@@ -1665,7 +1735,13 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
                 peak,
                 symbol,
                 depth: 1,
+                detailOpen: childDetail,
+                onToggleDetail,
               }))
+              if (childDetail) {
+                output.push(h('tr', { key: `${child.sessionId}:detail`, className: 'tu-detail-row' },
+                  h('td', { colSpan: 10 }, h(SessionDayStrip, { row: child, startKey, symbol, t }))))
+              }
             }
           }
         }
@@ -1748,6 +1824,7 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
       const [boxInfo, setBoxInfo] = useState(null)
       const [openMode, setOpenMode] = useState(readOpenMode)
       const [expanded, setExpanded] = useState(() => new Set())
+      const [detail, setDetail] = useState(() => new Set())
       const [sort, setSort] = useState({ key: 'total', direction: 'desc' })
       const now = useNow(30000)
       const { status, data, error, fetchedAt, refresh } = useUsageData({ live, revision: 0 })
@@ -1892,6 +1969,15 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
 
       const toggleChildren = useCallback((sessionId) => {
         setExpanded((previous) => {
+          const next = new Set(previous)
+          if (next.has(sessionId)) next.delete(sessionId)
+          else next.add(sessionId)
+          return next
+        })
+      }, [])
+
+      const toggleDetail = useCallback((sessionId) => {
+        setDetail((previous) => {
           const next = new Set(previous)
           if (next.has(sessionId)) next.delete(sessionId)
           else next.add(sessionId)
@@ -2110,6 +2196,9 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
                       symbol: data.pricing?.symbol,
                       expanded,
                       onToggleChildren: toggleChildren,
+                      detailOpen: detail,
+                      onToggleDetail: toggleDetail,
+                      startKey,
                     })))))
     }
 
