@@ -21,6 +21,12 @@ window.__ModuleLoader__.load({
     const React = require('react')
     const h = React.createElement
     const { useCallback, useEffect, useMemo, useRef, useState } = React
+    let createRoot = null
+    try {
+      createRoot = require('react-dom/client').createRoot
+    } catch {
+      createRoot = null
+    }
 
     const NS = 'token-usage'
     const PANEL_ID = 'token-usage'
@@ -90,6 +96,22 @@ window.__ModuleLoader__.load({
       'detail.hide': 'Hide daily detail',
       'detail.empty': 'No usage in this range',
       'detail.summary': '{days} days · {tokens} tokens · {cost}',
+      'selftest.title': 'Self-test',
+      'selftest.run': 'Run self-test',
+      'selftest.rerun': 'Run again',
+      'selftest.copy': 'Copy results',
+      'selftest.copied': 'Copied',
+      'selftest.copyFailed': 'Copy failed',
+      'selftest.idle': 'Not run',
+      'selftest.running': 'Running',
+      'selftest.pass': 'Pass',
+      'selftest.fail': 'Fail',
+      'selftest.summary': '{pass} passed · {fail} failed',
+      'selftest.summary.idle': 'Not run',
+      'selftest.check.route': 'GET /token-usage returns 200',
+      'selftest.check.etag': 'Re-request with ETag returns 304',
+      'selftest.check.chart': 'Chart container renders',
+      'selftest.check.pricing': 'Pricing table readable',
       'row.children': '{count} sub-sessions · {cost}',
       'row.children.title': 'Expand or collapse sub-sessions',
       'page.updated': 'Updated {time}',
@@ -223,6 +245,22 @@ window.__ModuleLoader__.load({
       'detail.hide': '收起每日明细',
       'detail.empty': '该时间范围内没有记录',
       'detail.summary': '{days} 天 · {tokens} tokens · {cost}',
+      'selftest.title': '自检',
+      'selftest.run': '运行自检',
+      'selftest.rerun': '重新运行',
+      'selftest.copy': '复制结果',
+      'selftest.copied': '已复制',
+      'selftest.copyFailed': '复制失败',
+      'selftest.idle': '未运行',
+      'selftest.running': '运行中',
+      'selftest.pass': '通过',
+      'selftest.fail': '失败',
+      'selftest.summary': '{pass} 通过 · {fail} 失败',
+      'selftest.summary.idle': '未运行',
+      'selftest.check.route': '/token-usage 返回 200',
+      'selftest.check.etag': '带 ETag 再请求返回 304',
+      'selftest.check.chart': '图表容器可渲染',
+      'selftest.check.pricing': '价格表可读',
       'row.children': '{count} 个子会话 · {cost}',
       'row.children.title': '展开或收起子会话',
       'page.updated': '更新于 {time}',
@@ -361,6 +399,18 @@ body[data-ds-dark-theme]{--dshc-blue:#4C8DFF;--dshc-green:#3FB950;--dshc-amber:#
 .tu-detail-fill{display:block;width:100%;border-radius:4px 4px 0 0;background:var(--dsw-alias-state-business-primary);opacity:.85}
 .tu-detail-label{font-size:10px;line-height:14px;color:var(--dsw-alias-label-tertiary)}
 .tu-detail-empty{font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary);padding:8px 2px}
+.tu-selftest{display:flex;flex-direction:column;gap:10px;margin-top:12px;padding:14px;border:.5px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-lg,12px);background:var(--dsw-alias-bg-layer-1)}
+.tu-selftest-head{display:flex;align-items:center;flex-wrap:wrap;gap:10px}
+.tu-selftest-title{margin:0;font-size:13px;line-height:18px;font-weight:600;color:var(--dsw-alias-label-primary)}
+.tu-selftest-summary{margin-right:auto;font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary)}
+.tu-selftest-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.tu-selftest-row{display:flex;align-items:baseline;flex-wrap:wrap;gap:8px;font-size:12px;line-height:18px}
+.tu-selftest-label{color:var(--dsw-alias-label-primary)}
+.tu-selftest-badge{padding:0 6px;border-radius:999px;font-size:10px;line-height:16px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-tertiary)}
+.tu-selftest-row[data-status=pass] .tu-selftest-badge{color:var(--dsw-alias-state-success-primary);background:color-mix(in srgb, var(--dsw-alias-state-success-primary) 14%, transparent)}
+.tu-selftest-row[data-status=fail] .tu-selftest-badge{color:var(--dsw-alias-state-error-primary);background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 14%, transparent)}
+.tu-selftest-detail{flex-basis:100%;font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary)}
+.tu-selftest-notice{font-size:11px;line-height:16px;color:var(--dsw-alias-state-success-primary)}
 .tu-row-child .tu-td-session{padding-left:26px}
 .tu-row-child .tu-title-text{font-weight:400;color:var(--dsw-alias-label-secondary)}
 .tu-scroll{flex:1;min-height:0;overflow:auto;padding:0 28px 36px;overscroll-behavior:contain}
@@ -1764,6 +1814,203 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
     }
 
     /** The page itself. */
+    // ---------------------------------------------------------------------
+    // Self-test section (plugins.detail.section)
+    // ---------------------------------------------------------------------
+
+    const SELFTEST_ID = 'dsh-token-usage.selftest'
+    const SELFTEST_TIMEOUT_MS = 2000
+
+    /** Fetch with a hard timeout; throws a readable message on abort. */
+    async function fetchWithTimeout(url, options, timeoutMs) {
+      const controller = new AbortController()
+      const timer = window.setTimeout(() => controller.abort(), timeoutMs)
+      try {
+        return await fetch(url, { ...options, signal: controller.signal })
+      } catch (error) {
+        if (controller.signal.aborted || error?.name === 'AbortError') throw new Error(`超时 ${timeoutMs}ms`)
+        throw error
+      } finally {
+        window.clearTimeout(timer)
+      }
+    }
+
+    /** Render one bar chart offscreen and report the DOM it produced. */
+    async function renderChartProbe() {
+      if (typeof createRoot !== 'function') throw new Error('react-dom/client 不可用')
+      const container = document.createElement('div')
+      container.style.cssText = 'position:absolute;left:-10000px;top:0;width:640px;height:240px'
+      document.body.appendChild(container)
+      const root = createRoot(container)
+      const probe = {
+        key: '2026-01-01',
+        date: new Date(),
+        day: '2026-01-01',
+        total: 1000,
+        input: 500,
+        output: 100,
+        cacheRead: 400,
+        cacheWrite: 0,
+        cost: 0.42,
+        costPeak: 0.12,
+        costValley: 0.3,
+      }
+      try {
+        root.render(h(HistoryBars, {
+          rows: [probe],
+          field: 'cost',
+          metric: 'cost',
+          symbol: '¥',
+          todayKey: '2026-01-01',
+          t: (key) => key,
+        }))
+        await new Promise((resolve) => setTimeout(resolve, 60))
+        const bars = container.querySelector('.tu-bars')
+        if (bars === null) throw new Error('图表 DOM 未生成')
+        return `${container.querySelectorAll('.tu-bar-col').length} 个柱 · ${container.querySelectorAll('.tu-bar-seg').length} 段`
+      } finally {
+        try {
+          root.unmount()
+        } catch {
+          /* A failed unmount must not mask the check result. */
+        }
+        container.remove()
+      }
+    }
+
+    /** `- [x] 标签 — 通过` lines for the copy button. */
+    function selftestMarkdown(results) {
+      return results
+        .map((result) => (result.ok ? `- [x] ${result.label} — 通过` : `- [ ] ${result.label} — 失败：${result.detail}`))
+        .join('\n')
+    }
+
+    /** Run every check once; failures stay isolated per row. */
+    async function runSelftest(t) {
+      const context = { etag: null, payload: null }
+      const checks = [
+        {
+          id: 'route',
+          label: t('selftest.check.route'),
+          async run() {
+            const response = await fetchWithTimeout(ENDPOINT, {
+              cache: 'no-store',
+              headers: { accept: 'application/json' },
+            }, SELFTEST_TIMEOUT_MS)
+            if (response.status !== 200) throw new Error(`HTTP ${response.status}`)
+            context.etag = response.headers.get('etag')
+            context.payload = await response.json()
+            const sessions = Array.isArray(context.payload?.sessions) ? context.payload.sessions.length : 0
+            return `HTTP 200 · ${sessions} 个会话`
+          },
+        },
+        {
+          id: 'etag',
+          label: t('selftest.check.etag'),
+          async run() {
+            if (context.etag === null) throw new Error('首次响应没有 ETag')
+            const response = await fetchWithTimeout(ENDPOINT, {
+              cache: 'no-store',
+              headers: { accept: 'application/json', 'if-none-match': context.etag },
+            }, SELFTEST_TIMEOUT_MS)
+            if (response.status !== 304) throw new Error(`期望 304，实际 ${response.status}`)
+            return `HTTP 304 · ${context.etag}`
+          },
+        },
+        { id: 'chart', label: t('selftest.check.chart'), run: () => renderChartProbe() },
+        {
+          id: 'pricing',
+          label: t('selftest.check.pricing'),
+          async run() {
+            const pricing = context.payload?.pricing
+            if (pricing === null || typeof pricing !== 'object') throw new Error('payload 缺少 pricing')
+            if (typeof pricing.currency !== 'string' || pricing.currency.length === 0) throw new Error('pricing.currency 缺失')
+            const multiplier = Number(pricing.peakMultiplier)
+            return `${pricing.currency} · 来源 ${pricing.source ?? 'builtin'} · 峰时 ×${Number.isFinite(multiplier) ? multiplier : '?'}`
+          },
+        },
+      ]
+      const results = []
+      for (const check of checks) {
+        try {
+          results.push({ id: check.id, label: check.label, ok: true, detail: await check.run() })
+        } catch (error) {
+          results.push({ id: check.id, label: check.label, ok: false, detail: error?.message ?? String(error) })
+        }
+      }
+      return results
+    }
+
+    function PluginSelfTest({ t, subject }) {
+      if (subject !== undefined && subject !== null && typeof subject.id === 'string' && !subject.id.includes('token-usage')) {
+        return null
+      }
+      const [results, setResults] = useState(null)
+      const [running, setRunning] = useState(false)
+      const [notice, setNotice] = useState('')
+      const start = useCallback(async () => {
+        setRunning(true)
+        setNotice('')
+        try {
+          const next = await runSelftest(t)
+          setResults(next)
+        } finally {
+          setRunning(false)
+        }
+      }, [t])
+      const copy = useCallback(async () => {
+        if (results === null) return
+        const copied = await copyText(selftestMarkdown(results))
+        setNotice(copied ? t('selftest.copied') : t('selftest.copyFailed'))
+      }, [results, t])
+      const pass = results === null ? 0 : results.filter((row) => row.ok).length
+      const fail = results === null ? 0 : results.length - pass
+      const summary = results === null
+        ? t('selftest.summary.idle')
+        : t('selftest.summary', { pass, fail })
+      return h('section', { className: 'tu-card tu-selftest', 'data-selftest': SELFTEST_ID },
+        h('div', { className: 'tu-selftest-head' },
+          h('h3', { className: 'tu-selftest-title' }, t('selftest.title')),
+          h('span', { className: 'tu-selftest-summary' }, summary),
+          h('button', {
+            type: 'button',
+            className: 'tu-btn',
+            disabled: running,
+            onClick: () => {
+              void start()
+            },
+          }, running ? t('selftest.running') : results === null ? t('selftest.run') : t('selftest.rerun')),
+          h('button', {
+            type: 'button',
+            className: 'tu-btn',
+            disabled: results === null,
+            onClick: () => {
+              void copy()
+            },
+          }, t('selftest.copy')),
+          notice === '' ? null : h('span', { className: 'tu-selftest-notice', role: 'status' }, notice)),
+        h('ul', { className: 'tu-selftest-list' }, (results ?? CHECKS_PLACEHOLDER(t)).map((row) => h('li', {
+          key: row.id,
+          className: 'tu-selftest-row',
+          'data-status': row.ok === undefined ? 'idle' : row.ok ? 'pass' : 'fail',
+        },
+        h('span', { className: 'tu-selftest-label' }, row.label),
+        h('span', { className: 'tu-selftest-badge' }, row.ok === undefined
+          ? t('selftest.idle')
+          : row.ok ? t('selftest.pass') : t('selftest.fail')),
+        row.ok === false ? h('span', { className: 'tu-selftest-detail' }, row.detail) : null))))
+    }
+
+    /** Idle rows shown before the first run. */
+    function CHECKS_PLACEHOLDER(t) {
+      return [
+        { id: 'route', label: t('selftest.check.route') },
+        { id: 'etag', label: t('selftest.check.etag') },
+        { id: 'chart', label: t('selftest.check.chart') },
+        { id: 'pricing', label: t('selftest.check.pricing') },
+      ]
+    }
+
     function TokenUsagePage(props) {
       const { ctx } = props
       const locale = ctx.locale ?? ctx.get('locale')
@@ -2171,6 +2418,16 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
           label: () => t('panel'),
           locale: NS,
         }, PanelIcon))
+
+        // Self-test block on this plugin's detail page; runs only on click.
+        const SelfTest = (props) => h(PluginSelfTest, Object.assign({}, props, { t }))
+        ctx.slots.inject('plugins.detail.section', () => ctx.slots.register({
+          name: 'plugins.detail.section',
+          id: SELFTEST_ID,
+          order: 90,
+          label: () => t('selftest.title'),
+          locale: NS,
+        }, SelfTest))
       },
     }
   },

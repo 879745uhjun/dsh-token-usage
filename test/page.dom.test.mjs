@@ -212,6 +212,7 @@ function loadPlugin(options) {
     load(def) {
       const api = def.factory((id) => {
         if (id === 'react') return React
+        if (id === 'react-dom/client') return { createRoot }
         throw new Error(`unexpected require: ${id}`)
       })
       api.apply(ctx)
@@ -240,6 +241,33 @@ function loadPlugin(options) {
       }
     }
     if (options.fail === true) throw new Error('boom')
+    if (options.hangToken === true) {
+      return new Promise((resolve, reject) => {
+        const signal = init?.signal
+        if (signal !== undefined && signal !== null) signal.addEventListener('abort', () => reject(new Error('aborted')))
+      })
+    }
+    const conditional = init?.headers?.['if-none-match'] ?? init?.headers?.['If-None-Match']
+    if (typeof conditional === 'string' && conditional.length > 0) {
+      return {
+        ok: true,
+        status: 304,
+        headers: { get: () => undefined },
+        async json() {
+          throw new Error('a 304 body must never be parsed')
+        },
+      }
+    }
+    if (options.tokenStatus !== undefined) {
+      return {
+        ok: options.tokenStatus < 400,
+        status: options.tokenStatus,
+        headers: { get: (name) => (String(name).toLowerCase() === 'etag' ? 'W/"dom"' : null) },
+        async json() {
+          return options.data ?? payload()
+        },
+      }
+    }
     if (fetchState.notModified) {
       return {
         ok: true,
@@ -605,6 +633,64 @@ const emptyPage = mount(empty)
 await waitFor(() => emptyPage.container.textContent.includes('还没有记录任何会话'), 'empty state')
 check('empty state rendered', emptyPage.container.textContent.includes('还没有记录任何会话'))
 emptyPage.unmount()
+
+// ---------------------------------------------------------------------------
+// Self-test section on the plugin detail page
+// ---------------------------------------------------------------------------
+
+function mountSelftest(build) {
+  const container = document.createElement('div')
+  document.body.appendChild(container)
+  const root = createRoot(container)
+  const entry = build.registrations.find((row) => row.entry.name === 'plugins.detail.section')
+  root.render(React.createElement(entry.component, { subject: { id: 'dsh-token-usage' } }))
+  return { container, root, entry }
+}
+
+const selfBuild = loadPlugin({})
+const selfEntry = selfBuild.registrations.find((row) => row.entry.name === 'plugins.detail.section')
+check('selftest registers on the detail slot',
+  selfEntry !== undefined && selfEntry.entry.id === 'dsh-token-usage.selftest' && selfEntry.entry.order === 90,
+  JSON.stringify(selfEntry?.entry ?? null))
+const self = mountSelftest(selfBuild)
+await waitFor(() => self.container.querySelector('.tu-selftest') !== null, 'selftest section')
+check('selftest starts idle', (self.container.querySelector('.tu-selftest-summary')?.textContent ?? '') === '未运行')
+self.container.querySelector('.tu-selftest-head .tu-btn').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+await waitFor(() => self.container.querySelectorAll('.tu-selftest-row[data-status=pass]').length === 4, 'selftest all pass')
+check('selftest passes all four checks', self.container.querySelectorAll('.tu-selftest-row').length === 4,
+  String(self.container.querySelectorAll('.tu-selftest-row').length))
+check('selftest summary counts', (self.container.querySelector('.tu-selftest-summary')?.textContent ?? '') === '4 通过 · 0 失败',
+  self.container.querySelector('.tu-selftest-summary')?.textContent ?? '')
+const copyBefore = copied.length
+Array.from(self.container.querySelectorAll('.tu-selftest-head .tu-btn')).find((button) => button.textContent === '复制结果')
+  .dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+await waitFor(() => copied.length > copyBefore, 'selftest copied')
+check('selftest markdown lists every check', copied.at(-1).split('\n').length === 4 && copied.at(-1).startsWith('- [x] '),
+  copied.at(-1).split('\n')[0])
+self.root.unmount()
+
+// A 404 fails the route checks while the chart check still passes.
+const failBuild = loadPlugin({ tokenStatus: 404 })
+const failed = mountSelftest(failBuild)
+await waitFor(() => failed.container.querySelector('.tu-selftest') !== null, 'selftest 404 section')
+failed.container.querySelector('.tu-selftest-head .tu-btn').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+await waitFor(() => failed.container.querySelectorAll('.tu-selftest-row[data-status=fail]').length === 3, 'selftest 404')
+check('selftest 404 isolates the chart check',
+  failed.container.querySelectorAll('.tu-selftest-row[data-status=pass]').length === 1,
+  failed.container.querySelector('.tu-selftest-summary')?.textContent ?? '')
+failed.root.unmount()
+
+// A hanging route fails after the 2 s timeout and keeps the section usable.
+const hangBuild = loadPlugin({ hangToken: true })
+const hung = mountSelftest(hangBuild)
+await waitFor(() => hung.container.querySelector('.tu-selftest') !== null, 'selftest hang section')
+hung.container.querySelector('.tu-selftest-head .tu-btn').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+await waitFor(() => hung.container.querySelectorAll('.tu-selftest-row[data-status=fail]').length === 3, 'selftest timeout', 6000)
+check('selftest timeout is reported', (hung.container.querySelector('.tu-selftest-row[data-status=fail] .tu-selftest-detail')?.textContent ?? '').includes('超时'),
+  hung.container.querySelector('.tu-selftest-row[data-status=fail] .tu-selftest-detail')?.textContent ?? '')
+check('selftest stays usable after a timeout',
+  hung.container.querySelector('.tu-selftest-head .tu-btn').disabled === false)
+hung.root.unmount()
 
 if (failures > 0) {
   console.error(`\n${failures} check(s) failed`)

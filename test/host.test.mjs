@@ -479,6 +479,16 @@ test('client paints data colors through CSS variables, never hex', () => {
   assert.equal(/#4C8DFF|#D29922|#0969DA|#9A6700/.test(source.replace(/--dshc-[a-z]+:#[0-9A-Fa-f]{6}/g, '')), false)
 })
 
+test('client registers the self-test section on the plugin detail slot', () => {
+  const source = readFileSync(new URL('../client.js', import.meta.url), 'utf8')
+  assert.match(source, /const SELFTEST_ID = 'dsh-token-usage\.selftest'/)
+  assert.match(source, /name: 'plugins\.detail\.section'/)
+  assert.match(source, /order: 90/)
+  for (const key of ['selftest.title', 'selftest.run', 'selftest.check.route', 'selftest.check.etag', 'selftest.check.chart', 'selftest.check.pricing']) {
+    assert.equal(source.includes(`'${key}'`), true, `${key} must exist`)
+  }
+})
+
 test('bar columns can shrink so long windows never clip a day', () => {
   const source = readFileSync(new URL('../client.js', import.meta.url), 'utf8')
   assert.match(source, /\.tu-bar-col\{[^}]*min-width:0/)

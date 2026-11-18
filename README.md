@@ -96,6 +96,22 @@ optional — omitted fields keep their built-in value. `holidays` are the days
 that bill at the off-peak rate all day; add each new year's statutory holidays
 there.
 
+## Self-test
+
+The plugin detail page (Settings → Plugins → dsh-token-usage) ends with a
+**Self-test** block that runs **only when you press “Run self-test”** — nothing is
+requested when the page merely opens:
+
+| Check | Passes when |
+| --- | --- |
+| `/token-usage` returns 200 | the same-origin route answers with JSON |
+| Re-request with the ETag returns 304 | the first response's ETag is accepted (read-only probe) |
+| Chart container renders | an offscreen bar chart mounts and produces DOM |
+| Pricing table readable | `payload.pricing` carries a currency and peak multiplier |
+
+Each check has a 2 s timeout, failures show their reason inline, and **Copy
+results** produces Markdown (`- [x] label — pass` / `- [ ] label — fail: reason`).
+
 ## Implementation
 
 | File | Role |
