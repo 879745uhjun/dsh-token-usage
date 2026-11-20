@@ -638,12 +638,12 @@ emptyPage.unmount()
 // Self-test section on the plugin detail page
 // ---------------------------------------------------------------------------
 
-function mountSelftest(build) {
+function mountSelftest(build, subject = { id: 'dsh-token-usage' }) {
   const container = document.createElement('div')
   document.body.appendChild(container)
   const root = createRoot(container)
   const entry = build.registrations.find((row) => row.entry.name === 'plugins.detail.section')
-  root.render(React.createElement(entry.component, { subject: { id: 'dsh-token-usage' } }))
+  root.render(React.createElement(entry.component, { subject }))
   return { container, root, entry }
 }
 
@@ -668,6 +668,15 @@ await waitFor(() => copied.length > copyBefore, 'selftest copied')
 check('selftest markdown lists every check', copied.at(-1).split('\n').length === 4 && copied.at(-1).startsWith('- [x] '),
   copied.at(-1).split('\n')[0])
 self.root.unmount()
+
+// The block renders only on this plugin's own detail page.
+const foreign = mountSelftest(loadPlugin({}), { id: 'dsh-session-boxes' })
+check('selftest hides on other plugin pages', foreign.container.querySelector('.tu-selftest') === null)
+foreign.root.unmount()
+const packaged = mountSelftest(loadPlugin({}), { pkg: { name: 'dsh-token-usage' } })
+await waitFor(() => packaged.container.querySelector('.tu-selftest') !== null, 'packaged selftest')
+check('selftest accepts a package-name subject', packaged.container.querySelector('.tu-selftest') !== null)
+packaged.root.unmount()
 
 // A 404 fails the route checks while the chart check still passes.
 const failBuild = loadPlugin({ tokenStatus: 404 })

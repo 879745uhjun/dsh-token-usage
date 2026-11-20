@@ -1942,7 +1942,15 @@ body[data-ds-dark-theme] .tu-legend-dot{opacity:.95}
     }
 
     function PluginSelfTest({ t, subject }) {
-      if (subject !== undefined && subject !== null && typeof subject.id === 'string' && !subject.id.includes('token-usage')) {
+      // Identify this plugin's detail page precisely: prefer the package name,
+      // fall back to the item id. Exact equality only — a substring match would
+      // also fire for unrelated ids that merely contain "token-usage".
+      const subjectId = subject == null
+        ? null
+        : typeof subject.pkg?.name === 'string'
+          ? subject.pkg.name
+          : typeof subject.id === 'string' ? subject.id : null
+      if (subjectId !== null && subjectId !== 'dsh-token-usage' && subjectId !== 'include:dsh-token-usage') {
         return null
       }
       const [results, setResults] = useState(null)

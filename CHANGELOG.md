@@ -3,6 +3,13 @@
 本文件记录 dsh-token-usage 的每次可见变化。版本号遵循语义化版本；此前的开发都在本地工作区进行，
 本仓库从 1.2.0 起有可追溯的提交历史。
 
+## 1.9.1 — 2026-11-20
+
+### 变更
+
+- 适配 DSH **0.2.2-rc.5** 复核：`window.__ModuleLoader__.load`、slot/locale/layout 契约、`--dsw-alias-*` token 与 `/token-usage` 路由均未变；用量页、按盒分组、每日明细、自检区块在 rc5 下正常。
+- 自检区块的详情页判定收紧：优先 `subject.pkg.name`，回退 `subject.id`，只做**精确相等**（`dsh-token-usage` / `include:dsh-token-usage`），不再用子串匹配，避免同名前缀误判。
+
 ## 1.9.0 — 2026-11-18
 
 ### 新增
