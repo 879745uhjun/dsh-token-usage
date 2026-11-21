@@ -3,7 +3,7 @@
 Live and historical token usage for every session in DeepSeek Harness — on one
 dedicated page.
 
-![Token usage page](test/shots/page-light.png)
+![History chart (sample)](test/shots/page-light.png)
 
 ## What it does
 

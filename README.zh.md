@@ -2,7 +2,7 @@
 
 每个会话消耗了多少 token —— 实时看，也能翻历史，一个独立页面。
 
-![Token 用量页面](test/shots/page-light.png)
+![历史消耗图表（示例）](test/shots/page-light.png)
 
 ## 它做什么
 
