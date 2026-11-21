@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { randomBytes } from 'node:crypto'
+import { closeSync, mkdtempSync, mkdirSync, openSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync, writeSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { zstdCompressSync } from 'node:zlib'
 
 import {
+  artifactFingerprint,
   costOf,
+  HASH_FULL_LIMIT,
   createScanner,
   createSessionReader,
   createSessionState,
@@ -537,4 +540,57 @@ test('scanner etag stays stable until an artifact changes', async () => {
   ]))
   await scanner.refresh(true)
   assert.notEqual(scanner.etag(), first, 'appended bytes change the validator')
+})
+
+test('etag moves when a log is rewritten to the same size and mtime', async () => {
+  const { sessionsRoot, file } = makeWorkspace()
+  const first = frame([sessionRecord(), assistantMessage(1, 1, { inputTokens: 10, outputTokens: 2 })])
+  const second = frame([sessionRecord({ id: 'session-test-0002' }), assistantMessage(1, 1, { inputTokens: 99, outputTokens: 7 })])
+  const length = Math.max(first.length, second.length)
+  const before = Buffer.alloc(length)
+  const after = Buffer.alloc(length)
+  first.copy(before)
+  second.copy(after)
+  writeFileSync(file, before)
+  const when = statSync(file).mtime
+  const scanner = createScanner(sessionsRoot)
+  await scanner.refresh(true)
+  const etagBefore = scanner.etag()
+  const totalBefore = scanner.snapshot().totals.total
+
+  writeFileSync(file, after)
+  utimesSync(file, when, when)
+  assert.equal(statSync(file).size, length, 'the rewrite keeps the byte length')
+  await scanner.refresh(true)
+  assert.notEqual(scanner.etag(), etagBefore, 'content, not size+mtime, decides the validator')
+  assert.notEqual(scanner.snapshot().totals.total, totalBefore, 'the fold re-reads the rewritten log')
+})
+
+test('large artifacts sample the first and last 4 KiB', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'token-usage-big-'))
+  try {
+    const file = join(dir, 'big.bin')
+    const size = HASH_FULL_LIMIT + 1024
+    writeFileSync(file, randomBytes(size))
+    const first = artifactFingerprint(file)
+    assert.match(first.hash, /^[0-9a-f]{40}$/)
+    assert.equal(first.size, size)
+
+    // A middle-only edit is outside the sampled window by design.
+    const handle = openSync(file, 'r+')
+    try {
+      writeSync(handle, Buffer.from([0x01, 0x02, 0x03]), 0, 3, Math.floor(size / 2))
+    } finally {
+      closeSync(handle)
+    }
+    assert.equal(artifactFingerprint(file).hash, first.hash, 'the middle is not sampled')
+
+    // The tail is sampled, so a last-byte edit must move the digest.
+    const bytes = readFileSync(file)
+    bytes[bytes.length - 1] ^= 0xff
+    writeFileSync(file, bytes)
+    assert.notEqual(artifactFingerprint(file).hash, first.hash, 'the tail is sampled')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })

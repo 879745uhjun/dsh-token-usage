@@ -17,8 +17,9 @@
  *
  * @module dsh-token-usage
  */
-import { readFileSync } from 'node:fs'
+import { closeSync, openSync, readFileSync, readSync, statSync } from 'node:fs'
 import { mkdir, open, readdir, rename, stat, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
 import { homedir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { zstdDecompressSync } from 'node:zlib'
@@ -37,6 +38,9 @@ const ZSTD_MAGIC = 0xfd2fb528
 
 /** Longest single JSONL line accepted before the reader assumes corruption. */
 const MAX_LINE_BYTES = 4 * 1024 * 1024
+/** Files at or below this size are hashed in full; larger ones by sampling. */
+export const HASH_FULL_LIMIT = 5 * 1024 * 1024
+const HASH_SAMPLE_BYTES = 4096
 
 /** How long a served snapshot may lag behind the files before it is refreshed. */
 const STALE_AFTER_MS = 700
@@ -57,7 +61,7 @@ const SESSION_FILES = ['session.v4.jsonl.zstd', 'session.jsonl.zstd', 'session.v
 const CACHE_FILE = 'token-usage-cache.json'
 
 /** Cache file format version. */
-const CACHE_VERSION = 2
+const CACHE_VERSION = 3
 
 /** Coalesce cache writes; a two-second poll must not rewrite the file. */
 const CACHE_WRITE_DELAY_MS = 8000
@@ -313,6 +317,34 @@ export function createSessionState() {
  * @param buffer - available bytes, starting at a frame boundary.
  * @returns complete frame ranges plus the start of a torn final frame.
  */
+/**
+ * Content digest of one artifact. Small files are hashed in full; files above
+ * `HASH_FULL_LIMIT` hash only their first and last 4 KiB so a poll never reads a
+ * multi-megabyte log end to end just to build an ETag. The size is mixed in so
+ * two different-length files cannot share a digest.
+ */
+export function artifactFingerprint(file) {
+  const info = statSync(file)
+  const hash = createHash('sha1')
+  hash.update(`${info.size}\n`)
+  if (info.size <= HASH_FULL_LIMIT) {
+    hash.update(readFileSync(file))
+  } else {
+    const handle = openSync(file, 'r')
+    try {
+      const head = Buffer.allocUnsafe(HASH_SAMPLE_BYTES)
+      const tail = Buffer.allocUnsafe(HASH_SAMPLE_BYTES)
+      const headRead = readSync(handle, head, 0, HASH_SAMPLE_BYTES, 0)
+      readSync(handle, tail, 0, HASH_SAMPLE_BYTES, info.size - HASH_SAMPLE_BYTES)
+      hash.update(head.subarray(0, headRead))
+      hash.update(tail)
+    } finally {
+      closeSync(handle)
+    }
+  }
+  return { hash: hash.digest('hex'), size: info.size }
+}
+
 export function scanZstdFrames(buffer) {
   const frames = []
   let offset = 0
@@ -918,6 +950,8 @@ function readCacheFile(file) {
  */
 export function createScanner(sessionsRoot, pricing = DEFAULT_PRICING, options = {}) {
   const readers = new Map()
+  /** Last content digest per artifact, used by the ETag. */
+  const fingerprints = new Map()
   const cacheFile = typeof options.cacheFile === 'string' ? options.cacheFile : undefined
   const cacheEntries = cacheFile === undefined ? new Map() : readCacheFile(cacheFile)
   let lastRefreshAt = 0
@@ -941,6 +975,7 @@ export function createScanner(sessionsRoot, pricing = DEFAULT_PRICING, options =
         size: reader.size,
         mtimeMs: reader.mtimeMs,
         offset: reader.offset,
+        fingerprint: fingerprints.get(path)?.hash ?? null,
         state: serializeSessionState(reader.state),
       }
     }
@@ -973,12 +1008,13 @@ export function createScanner(sessionsRoot, pricing = DEFAULT_PRICING, options =
   }
 
   /** Adopt a cache entry when the artifact is byte-identical to what it saw. */
-  async function adoptCached(file, reader) {
+  async function adoptCached(file, reader, hash) {
     const entry = cacheEntries.get(file)
     if (entry === undefined) return
     try {
       const info = await stat(file)
       if (entry.size !== info.size || entry.mtimeMs !== info.mtimeMs) return
+      if (typeof entry.fingerprint !== 'string' || entry.fingerprint !== hash) return
       const state = restoreSessionState(entry.state)
       if (state === undefined) return
       reader.state = state
@@ -1001,15 +1037,35 @@ export function createScanner(sessionsRoot, pricing = DEFAULT_PRICING, options =
     }
     const seen = new Set(files)
     for (const [file] of readers) {
-      if (!seen.has(file)) readers.delete(file)
+      if (!seen.has(file)) {
+        readers.delete(file)
+        fingerprints.delete(file)
+      }
     }
     let sliceStart = Date.now()
     for (const file of files) {
       let reader = readers.get(file)
+      // Fingerprint before adopting a cache entry: a same-size rewrite is only
+      // distinguishable by content, and a stale fold must not be reused.
+      let next = null
+      try {
+        next = artifactFingerprint(file)
+      } catch {
+        fingerprints.delete(file)
+      }
       if (reader === undefined) {
         reader = createSessionReader(file, pricing)
-        await adoptCached(file, reader)
         readers.set(file, reader)
+        if (next !== null) await adoptCached(file, reader, next.hash)
+      }
+      // A same-size in-place rewrite (same mtime millisecond included) is only
+      // visible through the content digest; re-fold from byte 0 when it moves.
+      if (next !== null) {
+        const previous = fingerprints.get(file)
+        fingerprints.set(file, next)
+        if (previous !== undefined && previous.hash !== next.hash && previous.size === next.size) {
+          reader.reset()
+        }
       }
       try {
         await reader.poll()
@@ -1047,9 +1103,10 @@ export function createScanner(sessionsRoot, pricing = DEFAULT_PRICING, options =
       await persistNow(true)
     },
     /**
-     * Weak validator over every artifact's size and modification time.
-     * Unchanged logs keep the same value, so a poll can answer 304 and skip the
-     * whole payload.
+     * Weak validator over every artifact's size, modification time and content
+     * digest. Files rewritten in place to the same byte length keep their size
+     * and can even keep their mtime millisecond, so the digest is what makes a
+     * changed log produce a different ETag.
      */
     etag() {
       let hash = 2166136261
@@ -1058,6 +1115,13 @@ export function createScanner(sessionsRoot, pricing = DEFAULT_PRICING, options =
         hash = Math.imul(hash, 16777619)
         hash ^= file.length
         hash = Math.imul(hash, 16777619)
+        const fingerprint = fingerprints.get(file)
+        if (fingerprint !== undefined) {
+          for (let index = 0; index < fingerprint.hash.length; index += 1) {
+            hash ^= fingerprint.hash.charCodeAt(index)
+            hash = Math.imul(hash, 16777619)
+          }
+        }
       }
       return `W/"${readers.size.toString(36)}-${(hash >>> 0).toString(36)}"`
     },

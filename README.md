@@ -132,11 +132,14 @@ peak/off-peak split never hardcode a hex value.
   prompt tokens from usage the provider reported; it does not read account
   balances, and it does not know a provider's private rates unless you override
   them.
-- **304 uses size and modification time only.** The poll's `ETag` hashes each
-  artifact's byte size and `mtime`. An external tool that rewrites a log in place
-  to the same size and restores its original `mtime` could make a 304 serve stale
-  content; the normal write path never does this, so no extra fingerprint is
-  computed.
+- **ETag composition.** The validator is `W/"<count>-<hash>"`, and the hash mixes
+  each artifact's **byte size, `mtime`, and a content digest**. The digest is a
+  full SHA-1 for small logs (≤ 5 MB) and the **first plus last 4 KiB** (with the
+  length) for larger ones, so a poll never reads a big log end to end. A log
+  rewritten in place to the same size — even within the same `mtime`
+  millisecond — still changes the ETag: the scanner re-folds from byte 0, so the
+  client receives the new content instead of a 304. The cache (version 3) stores
+  the digest too, so a restart never reuses a fold that no longer matches.
 
 ### Development
 
